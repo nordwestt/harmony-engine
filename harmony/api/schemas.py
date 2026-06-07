@@ -13,7 +13,10 @@ class ErrorResponse(BaseModel):
 
 
 class IndexRequest(BaseModel):
-    paths: list[str] | None = None
+    paths: list[str] | None = Field(
+        default=None,
+        description="Directories to scan; defaults to HARMONY_INDEX_PATHS or filesystem.paths",
+    )
     full_rescan: bool = False
     embed: bool = True
     prune: bool = False

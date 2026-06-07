@@ -74,7 +74,10 @@ class Engine:
         """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
         scan_paths = paths or self.config.filesystem.paths
         if not scan_paths:
-            raise ValueError("No paths provided. Pass paths= or configure filesystem.paths")
+            raise ValueError(
+                "No paths provided. Pass paths=, set filesystem.paths in config.yaml, "
+                "or set HARMONY_INDEX_PATHS"
+            )
 
         scanner = FilesystemScanner(scan_paths, config=self.config.filesystem)
         report = self.sync.reconcile(scanner)

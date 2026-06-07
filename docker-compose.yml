@@ -11,6 +11,7 @@ services:
       - ${MUSIC_PATH:-./music}:/music:ro
     environment:
       HARMONY_DATA_DIR: /data
+      HARMONY_INDEX_PATHS: /music
       HF_HOME: /data/huggingface
       PORT: "8000"
     restart: unless-stopped

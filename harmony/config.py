@@ -10,6 +10,22 @@ from typing import Any
 import yaml
 
 DEFAULT_DATA_DIR = Path.home() / ".harmony"
+HARMONY_INDEX_PATHS_ENV = "HARMONY_INDEX_PATHS"
+
+
+def index_paths_from_env() -> list[str] | None:
+    """Parse comma-separated index paths from ``HARMONY_INDEX_PATHS``."""
+    raw = os.environ.get(HARMONY_INDEX_PATHS_ENV)
+    if raw is None:
+        return None
+    paths = [part.strip() for part in raw.split(",") if part.strip()]
+    return paths or None
+
+
+def _apply_env_overrides(config: Config) -> None:
+    env_paths = index_paths_from_env()
+    if env_paths is not None:
+        config.filesystem.paths = env_paths
 
 
 @dataclass
@@ -123,10 +139,14 @@ class Config:
 
         config_path = data_dir / "config.yaml"
         if not config_path.exists():
-            return cls(data_dir=data_dir)
+            config = cls(data_dir=data_dir)
+            _apply_env_overrides(config)
+            return config
 
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-        return cls.from_dict(raw, data_dir=data_dir)
+        config = cls.from_dict(raw, data_dir=data_dir)
+        _apply_env_overrides(config)
+        return config
 
     @classmethod
     def from_dict(cls, data: dict[str, Any], *, data_dir: Path) -> Config:

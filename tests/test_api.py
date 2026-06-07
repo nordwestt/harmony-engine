@@ -66,6 +66,31 @@ def test_library_tracks_empty(tmp_path: Path) -> None:
     assert body["items"] == []
 
 
+def test_index_uses_env_paths_when_omitted(tmp_path: Path, monkeypatch) -> None:
+    pytest.importorskip("fastapi")
+    music_dir = tmp_path / "music"
+    monkeypatch.setenv("HARMONY_INDEX_PATHS", str(music_dir))
+
+    captured: list[list[str]] = []
+
+    class FakeScanner:
+        def __init__(self, paths, config=None) -> None:
+            captured.append([str(p) for p in paths])
+
+        def scan(self):
+            return iter([])
+
+    monkeypatch.setattr("harmony.engine.FilesystemScanner", FakeScanner)
+
+    app = create_app(tmp_path / "data", preload_on_serve=False)
+    client = TestClient(app)
+    client.post("/v1/init")
+
+    resp = client.post("/v1/index", json={"embed": False})
+    assert resp.status_code == 200
+    assert captured == [[str(music_dir)]]
+
+
 def test_purge_requires_flags(tmp_path: Path) -> None:
     pytest.importorskip("fastapi")
     app = create_app(tmp_path / "data", preload_on_serve=False)

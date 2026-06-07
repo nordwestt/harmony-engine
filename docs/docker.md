@@ -79,6 +79,7 @@ First index run downloads **OpenMuQ/MuQ-MuLan-large** into `/data/huggingface`. 
 | `PORT` | `8000` | Host port mapped to the API |
 | `HARMONY_IMAGE` | `ghcr.io/.../harmony-engine:latest` | Override image (e.g. pinned version) |
 | `HARMONY_DATA_DIR` | `/data` | Set inside container; usually leave default |
+| `HARMONY_INDEX_PATHS` | `/music` | Default scan roots for index jobs (comma-separated) |
 | `HF_HOME` | `/data/huggingface` | Hugging Face cache directory |
 
 ## Upgrading
