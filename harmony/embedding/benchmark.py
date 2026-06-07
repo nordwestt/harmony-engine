@@ -29,6 +29,7 @@ class EncodeBenchmarkResult:
     load_ms: float
     resample_ms: float
     chunk_ms: float
+    model_load_ms: float
     embed_ms: float
     total_ms: float
     device: str
@@ -84,6 +85,8 @@ def benchmark_encode(
     batch_size = max(1, config.embedding.batch_size)
     batches = (len(chunk_waveforms) + batch_size - 1) // batch_size
 
+    model_load_ms = _time_model_load(embedder)
+
     session_factory = getattr(embedder, "session", None)
     embed_start = time.perf_counter()
     if session_factory:
@@ -120,12 +123,25 @@ def benchmark_encode(
         load_ms=load_ms,
         resample_ms=resample_ms,
         chunk_ms=chunk_ms,
+        model_load_ms=model_load_ms,
         embed_ms=embed_ms,
         total_ms=total_ms,
         device=embedder.device,
         model=embedder.name,
         vector_dim=int(track_vector.shape[0]),
     )
+
+
+def _time_model_load(embedder: Embedder) -> float:
+    """Load model weights before timing inference, if the embedder supports it."""
+    preload = getattr(embedder, "preload", None)
+    is_loaded = getattr(embedder, "is_loaded", None)
+    if preload is None or is_loaded is None or is_loaded:
+        return 0.0
+
+    start = time.perf_counter()
+    preload()
+    return (time.perf_counter() - start) * 1000
 
 
 def _embed_chunks_batched(

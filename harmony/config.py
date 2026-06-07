@@ -38,7 +38,7 @@ class EmbeddingConfig:
     model: str = "muq-mulan"
     checkpoint: str = "OpenMuQ/MuQ-MuLan-large"
     device: str = "auto"
-    batch_size: int = 8
+    batch_size: int = 16
     dimension: int | None = None
     # Keep model in RAM: false/0/"immediate", minutes (e.g. 30), or "forever"
     keep_alive: str | int | bool = "forever"
@@ -57,7 +57,7 @@ class EmbeddingConfig:
 class AudioConfig:
     target_sample_rate: int = 24000
     mono: bool = True
-    chunk_seconds: int = 10
+    chunk_seconds: int = 20
     overlap_seconds: int = 2
     min_chunk_seconds: int = 1
     max_file_size_bytes: int = 500_000_000

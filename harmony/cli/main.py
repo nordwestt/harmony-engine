@@ -291,6 +291,8 @@ def bench_encode(ctx: click.Context, path: Path, as_json: bool) -> None:
     if result.resample_ms > 0:
         click.echo(f"Resample:    {result.resample_ms:.0f} ms")
     click.echo(f"Chunk:       {result.chunk_ms:.0f} ms")
+    if result.model_load_ms > 0:
+        click.echo(f"Model load:  {result.model_load_ms:.0f} ms")
     click.echo(f"Embed:       {result.embed_ms:.0f} ms")
     click.echo(f"Total:       {result.total_ms:.0f} ms ({result.total_ms / 1000:.1f}s)")
 
