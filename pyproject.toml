@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "harmony-engine"
 version = "0.1.0"
-description = "Self-hosted music library indexer and vector search engine (MuQ-MuLan)"
+description = "Self-hosted music library indexer and vector search engine"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -31,10 +31,13 @@ dependencies = [
 db = ["pyturso>=0.6"]
 audio = ["soundfile>=0.12", "librosa>=0.10"]
 embed = [
-    "muq>=0.1.0",
     "torch>=2.0",
     "librosa>=0.10",
     "soundfile>=0.12",
+]
+embed-muq = [
+    "harmony-engine[embed]",
+    "muq>=0.1.0",
 ]
 index = ["faiss-cpu>=1.7"]
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
@@ -47,7 +50,7 @@ dev = [
     "mypy>=1.8",
 ]
 all = [
-    "harmony-engine[db,audio,embed,index,api,watch,dev]",
+    "harmony-engine[db,audio,embed,embed-muq,index,api,watch,dev]",
 ]
 
 [project.scripts]

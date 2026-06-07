@@ -8,7 +8,7 @@ For self-hosting with Docker, see [docker.md](docker.md).
 
 ```bash
 # Terminal 1 — start the engine
-uv sync --extra db --extra embed --extra api --group dev
+uv sync --extra db --extra embed --extra embed-muq --extra api --group dev
 uv run harmony serve
 
 # Terminal 2 — CLI talks to the server automatically

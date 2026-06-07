@@ -7,7 +7,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from harmony.config import Config
-from harmony.embedding.muq_mulan import MuQMuLanEmbedder
+from harmony.embedding.base import Embedder
+from harmony.embedding.factory import create_embedder
 from harmony.embedding.pipeline import TrackEmbeddingPipeline
 from harmony.index.manager import TrackIndexManager
 from harmony.models import SearchResult, SyncReport
@@ -30,7 +31,7 @@ class Engine:
         self._store: MetadataStore | None = None
         self._sync: LibrarySync | None = None
         self._vectors: VectorStore | None = None
-        self._embedder: MuQMuLanEmbedder | None = None
+        self._embedder: Embedder | None = None
         self._pipeline: TrackEmbeddingPipeline | None = None
         self._index_manager: TrackIndexManager | None = None
         self._purge: LibraryPurge | None = None
@@ -268,29 +269,29 @@ class Engine:
         """Start loading embedding model weights in a background thread."""
         self._get_embedder().preload_background()
 
-    def model_status(self) -> dict[str, str | bool | None]:
+    def model_status(self) -> dict[str, str | bool | int | None]:
         embedder = self._get_embedder()
-        policy = embedder.keep_alive_policy  # type: ignore[attr-defined]
+        policy = embedder.keep_alive_policy
         return {
-            "loaded": embedder.is_loaded,  # type: ignore[attr-defined]
-            "loading": embedder.is_loading,  # type: ignore[attr-defined]
-            "load_error": embedder.load_error,  # type: ignore[attr-defined]
-            "device": embedder.device,  # type: ignore[attr-defined]
-            "keep_alive": policy.label,  # type: ignore[attr-defined]
+            "model": self.config.embedding.model,
+            "loaded": embedder.is_loaded,
+            "loading": embedder.is_loading,
+            "load_error": embedder.load_error,
+            "device": embedder.device,
+            "keep_alive": policy.label,
             "checkpoint": self.config.embedding.checkpoint,
+            "dimension": self.config.embedding.effective_dimension(),
         }
 
     def close(self) -> None:
         if self._embedder is not None:
-            unload = getattr(self._embedder, "unload", None)
-            if unload is not None:
-                unload()
+            self._embedder.unload()
         if self._store is not None:
             self._store.close()
 
-    def _get_embedder(self) -> MuQMuLanEmbedder:
+    def _get_embedder(self) -> Embedder:
         if self._embedder is None:
-            self._embedder = MuQMuLanEmbedder(self.config.embedding)
+            self._embedder = create_embedder(self.config)
         return self._embedder
 
     def _get_pipeline(self) -> TrackEmbeddingPipeline:

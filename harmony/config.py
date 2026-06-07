@@ -39,9 +39,18 @@ class EmbeddingConfig:
     checkpoint: str = "OpenMuQ/MuQ-MuLan-large"
     device: str = "auto"
     batch_size: int = 8
+    dimension: int | None = None
     # Keep model in RAM: false/0/"immediate", minutes (e.g. 30), or "forever"
     keep_alive: str | int | bool = "forever"
     preload_on_serve: bool = True
+
+    def effective_dimension(self) -> int:
+        """Vector dimension for the configured backend (no model load required)."""
+        if self.dimension is not None:
+            return self.dimension
+        from harmony.embedding.factory import backend_dimension
+
+        return backend_dimension(self.model)
 
 
 @dataclass

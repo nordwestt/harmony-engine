@@ -12,28 +12,7 @@ from harmony.embedding.pipeline import TrackEmbeddingPipeline
 from harmony.models import Track, TrackStatus, utcnow
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
-
-
-class FakeEmbedder:
-    name = "fake"
-    dimension = 4
-
-    def embed_audio(self, waveform: np.ndarray, sample_rate: int) -> np.ndarray:
-        return np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32)
-
-    def embed_audio_batch(
-        self,
-        waveforms: list[np.ndarray],
-        *,
-        sample_rate: int,
-    ) -> np.ndarray:
-        return np.tile(np.array([1.0, 0.0, 0.0, 0.0], dtype=np.float32), (len(waveforms), 1))
-
-    def embed_text(self, text: str) -> np.ndarray:
-        return np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32)
-
-    def embed_text_batch(self, texts: list[str]) -> np.ndarray:
-        return np.tile(np.array([0.0, 1.0, 0.0, 0.0], dtype=np.float32), (len(texts), 1))
+from tests.fake_embedder import FakeEmbedder
 
 
 @pytest.fixture

@@ -12,20 +12,7 @@ from harmony.models import utcnow
 from harmony.retrieval.search import SearchEngine
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
-
-
-class FakeEmbedder:
-    name = "fake"
-    dimension = 3
-
-    def embed_text(self, text: str) -> np.ndarray:
-        return np.array([1.0, 0.0, 0.0], dtype=np.float32)
-
-    def embed_audio(self, waveform: np.ndarray, sample_rate: int) -> np.ndarray:
-        return np.array([1.0, 0.0, 0.0], dtype=np.float32)
-
-    def embed_text_batch(self, texts: list[str]) -> np.ndarray:
-        return np.tile(np.array([1.0, 0.0, 0.0], dtype=np.float32), (len(texts), 1))
+from tests.fake_embedder import FakeEmbedder
 
 
 def _insert_track(
@@ -88,7 +75,7 @@ def test_search_sees_incremental_index_update(tmp_path: Path) -> None:
     )
 
     engine = Engine(cfg.data_dir)
-    engine._embedder = FakeEmbedder()  # type: ignore[assignment]
+    engine._embedder = FakeEmbedder(dimension=3)
     manager = engine._get_index_manager()
     manager.rebuild()
 
@@ -128,7 +115,7 @@ def test_invalidate_search_clears_cached_engine(tmp_path: Path) -> None:
     )
 
     engine = Engine(cfg.data_dir)
-    engine._embedder = FakeEmbedder()  # type: ignore[assignment]
+    engine._embedder = FakeEmbedder(dimension=3)
     engine._get_index_manager().rebuild()
     first = engine._get_search()
     engine._invalidate_search()

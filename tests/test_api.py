@@ -30,10 +30,12 @@ def test_health_and_init(tmp_path: Path) -> None:
 def test_v1_health_reports_model_loading(tmp_path: Path) -> None:
     pytest.importorskip("fastapi")
     from harmony.engine import Engine
+    from tests.fake_embedder import FakeEmbedder
 
     engine = Engine(tmp_path / "data")
-    embedder = engine._get_embedder()
-    embedder._loading = True  # type: ignore[attr-defined]
+    embedder = FakeEmbedder()
+    embedder.is_loading = True
+    engine._embedder = embedder
 
     app = create_app(tmp_path / "data", preload_on_serve=False, engine=engine)
     client = TestClient(app)

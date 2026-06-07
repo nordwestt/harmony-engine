@@ -1,37 +1,28 @@
-"""MuQ-MuLan embedder wrapper."""
+"""MuQ-MuLan embedder backend."""
 
 from __future__ import annotations
 
 import sys
 import threading
+from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Any, Iterator
+from typing import Any
 
 import numpy as np
 
-from harmony.config import EmbeddingConfig
+from harmony.config import Config
+from harmony.embedding.base import resolve_device
 from harmony.embedding.keep_alive import KeepAlivePolicy, parse_keep_alive
 
 EMBEDDING_DIM = 512
 DEFAULT_CHECKPOINT = "OpenMuQ/MuQ-MuLan-large"
 
 
-def resolve_device(device: str) -> str:
-    if device != "auto":
-        return device
-    try:
-        import torch
-
-        return "cuda" if torch.cuda.is_available() else "cpu"
-    except ImportError:
-        return "cpu"
-
-
 class MuQMuLanEmbedder:
     """Wrapper around MuQ-MuLan for audio and text embeddings."""
 
-    def __init__(self, config: EmbeddingConfig | None = None) -> None:
-        self.config = config or EmbeddingConfig()
+    def __init__(self, config: Config) -> None:
+        self._config = config
         self._model: Any = None
         self._device: str | None = None
         self._unload_timer: threading.Timer | None = None
@@ -42,7 +33,7 @@ class MuQMuLanEmbedder:
 
     @property
     def name(self) -> str:
-        return self.config.model
+        return self._config.embedding.model
 
     @property
     def dimension(self) -> int:
@@ -51,7 +42,7 @@ class MuQMuLanEmbedder:
     @property
     def device(self) -> str:
         if self._device is None:
-            self._device = resolve_device(self.config.device)
+            self._device = resolve_device(self._config.embedding.device)
         return self._device
 
     @property
@@ -68,10 +59,10 @@ class MuQMuLanEmbedder:
 
     @property
     def keep_alive_policy(self) -> KeepAlivePolicy:
-        return parse_keep_alive(self.config.keep_alive)
+        return parse_keep_alive(self._config.embedding.keep_alive)
 
     def _checkpoint(self) -> str:
-        return self.config.checkpoint or DEFAULT_CHECKPOINT
+        return self._config.embedding.checkpoint or DEFAULT_CHECKPOINT
 
     def preload(self) -> None:
         """Load model weights into memory."""
@@ -134,12 +125,11 @@ class MuQMuLanEmbedder:
                 return self._model
 
             try:
-                import torch
                 from muq import MuQMuLan
             except ImportError as e:
                 raise ImportError(
                     "MuQ-MuLan requires optional dependencies. "
-                    "Install with: uv sync --extra embed"
+                    "Install with: uv sync --extra embed --extra embed-muq"
                 ) from e
 
             checkpoint = self._checkpoint()
@@ -193,7 +183,7 @@ class MuQMuLanEmbedder:
         model = self._ensure_model()
         import torch
 
-        target_sr = 24000
+        target_sr = self._config.audio.target_sample_rate
         prepared: list[np.ndarray] = []
         for waveform in waveforms:
             wav = np.asarray(waveform, dtype=np.float32).reshape(-1)
