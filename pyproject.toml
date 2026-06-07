@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "harmony-engine"
+version = "0.1.0"
+description = "Self-hosted music library indexer and vector search engine (MuQ-MuLan)"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "Harmony contributors" }]
+keywords = ["music", "embeddings", "vector-search", "muq-mulan", "self-hosted"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Multimedia :: Sound/Audio",
+]
+dependencies = [
+    "click>=8.1",
+    "numpy>=1.26",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+db = ["pyturso>=0.6"]
+audio = ["soundfile>=0.12", "librosa>=0.10"]
+embed = ["torch>=2.0", "transformers>=4.36"]
+index = ["faiss-cpu>=1.7"]
+api = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
+watch = ["watchdog>=4.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+all = [
+    "harmony-engine[db,audio,embed,index,api,watch,dev]",
+]
+
+[project.scripts]
+harmony = "harmony.cli.main:cli"
+
+[project.urls]
+Repository = "https://github.com/harmony-search/harmony-engine"
+Documentation = "https://github.com/harmony-search/harmony-engine/blob/main/engine-spec.md"
+
+[tool.hatch.build.targets.wheel]
+packages = ["harmony"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
