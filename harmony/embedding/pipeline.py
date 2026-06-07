@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import sys
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -60,24 +62,46 @@ class TrackEmbeddingPipeline:
         self.store.mark_track_embedded(track.track_id, duration_ms=duration_ms, version=version)
         return track_vector
 
-    def embed_pending(self) -> tuple[int, int]:
+    def embed_pending(
+        self,
+        *,
+        on_progress: Callable[[int, int, str], None] | None = None,
+    ) -> tuple[int, int]:
         """Embed all active tracks missing vectors at the current version.
 
         Returns (embedded_count, failed_count).
         """
         pending = self.store.list_tracks_pending_embedding()
+        if not pending:
+            return 0, 0
+
+        total = len(pending)
+        print(f"Embedding {total} track(s)…", file=sys.stderr)
+
         embedded = 0
         failed = 0
+        iterator: object = pending
 
-        for track in pending:
+        try:
+            from tqdm import tqdm
+
+            iterator = tqdm(pending, unit="track", file=sys.stderr)
+        except ImportError:
+            pass
+
+        for i, track in enumerate(iterator, start=1):
+            label = f"{track.artist} — {track.title}"
             try:
                 self.embed_track(track)
                 embedded += 1
                 logger.info("Embedded %s — %s", track.artist, track.title)
+                if on_progress:
+                    on_progress(i, total, label)
             except Exception:
                 failed += 1
                 logger.exception("Failed to embed %s", track.primary_path)
                 self.store.mark_track_failed(track.track_id, utcnow())
+                print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
 
         return embedded, failed
 

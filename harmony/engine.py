@@ -74,6 +74,9 @@ class Engine:
         report = self.sync.reconcile(scanner)
 
         if embed:
+            pending = self.store.list_tracks_pending_embedding()
+            if pending:
+                logger.info("Embedding %d pending track(s)", len(pending))
             embedded, failed = self._get_pipeline().embed_pending()
             report.embedded = embedded
             report.failed += failed

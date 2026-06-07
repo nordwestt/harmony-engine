@@ -58,8 +58,10 @@ def index(
     path_strs = [str(p) for p in paths] if paths else None
 
     try:
+        if not no_embed:
+            click.echo("Scanning library…", err=True)
         report = engine.index(paths=path_strs, full_rescan=full, embed=not no_embed)
-    except (ValueError, NotImplementedError) as e:
+    except (ValueError, NotImplementedError, ImportError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     finally:

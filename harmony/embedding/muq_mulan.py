@@ -49,6 +49,8 @@ class MuQMuLanEmbedder:
     def _ensure_model(self) -> object:
         if self._model is not None:
             return self._model
+        import sys
+
         try:
             import torch
             from muq import MuQMuLan
@@ -58,8 +60,12 @@ class MuQMuLanEmbedder:
                 "Install with: uv sync --extra embed"
             ) from e
 
-        model = MuQMuLan.from_pretrained(self._checkpoint())
+        checkpoint = self._checkpoint()
+        print(f"Loading MuQ-MuLan ({checkpoint}) on {self.device}…", file=sys.stderr)
+        model = MuQMuLan.from_pretrained(checkpoint)
+        print("Moving model to device…", file=sys.stderr)
         model = model.to(self.device).eval()
+        print("Model ready.", file=sys.stderr)
         self._model = model
         return model
 
