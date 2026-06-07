@@ -12,6 +12,7 @@ uv sync --extra db --extra embed --extra api --group dev
 uv run harmony serve
 
 # Terminal 2 — CLI talks to the server automatically
+# (no separate init step — the server creates ~/.harmony on first start)
 uv run harmony index ~/music --prune
 uv run harmony search text "melancholic piano" --k 10
 uv run harmony status
@@ -46,7 +47,7 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 | `GET /health` | Liveness probe (always `ok` once the server is listening) |
 | `GET /v1/health` | Startup status; returns a friendly message while model weights download |
 | `GET /v1/ready` | Model loaded and index has vectors |
-| `POST /v1/init` | Initialize data directory |
+| `POST /v1/init` | Optional idempotent setup (automatic on first `harmony serve`) |
 | `POST /v1/index` | Scan, embed, update index |
 | `GET /v1/index/jobs/{job_id}` | Background index job status |
 | `POST /v1/search/text` | Text → similar tracks |
@@ -58,6 +59,16 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 | `POST /v1/library/purge` | Remove missing/removed/orphan data |
 
 Errors return `{"error": "...", "code": "..."}`.
+
+## Configuration
+
+| Variable | Description |
+|----------|-------------|
+| `HARMONY_DATA_DIR` | Data directory (default `~/.harmony`, `/data` in Docker) |
+| `HARMONY_INDEX_PATHS` | Comma-separated default scan roots when index `paths` are omitted |
+| `HARMONY_API_URL` | API base URL for the CLI (default auto-detect `http://127.0.0.1:8000`) |
+
+On first start, the server creates `config.yaml`, the SQLite database, and required folders. Set `HARMONY_INDEX_PATHS` (or `filesystem.paths` in `config.yaml`) so `POST /v1/index` with an empty body knows where your music lives.
 
 ## Async indexing
 

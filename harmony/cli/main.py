@@ -53,7 +53,7 @@ def cli(ctx: click.Context, data_dir: Path | None) -> None:
 @click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
 def init(ctx: click.Context, local: bool) -> None:
-    """Initialize data directory and database."""
+    """Initialize data directory and database (optional — ``harmony serve`` does this automatically)."""
     api_url = _resolve_api(local)
     if api_url:
         from harmony.client import init_library

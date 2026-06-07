@@ -55,11 +55,23 @@ class Engine:
             self._vectors = VectorStore(self.config)
         return self._vectors
 
+    def needs_init(self) -> bool:
+        """True when the data directory has never been initialized."""
+        return not (self.config.data_dir / "config.yaml").exists()
+
     def init(self) -> None:
         """Initialize data directory, config, and database schema."""
         self.config.ensure_data_dir()
         self.config.save()
         _ = self.store  # runs migrations
+
+    def ensure_initialized(self) -> bool:
+        """Initialize on first use. Returns True if setup ran."""
+        if not self.needs_init():
+            return False
+        self.init()
+        logger.info("Initialized Harmony at %s", self.config.data_dir)
+        return True
 
     def index(
         self,
@@ -72,6 +84,7 @@ class Engine:
         on_embed_progress: Callable[[int, int, str], None] | None = None,
     ) -> SyncReport:
         """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
+        self.ensure_initialized()
         scan_paths = paths or self.config.filesystem.paths
         if not scan_paths:
             raise ValueError(

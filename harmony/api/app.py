@@ -26,12 +26,13 @@ from harmony.api.schemas import (
     TracksListResponse,
 )
 
-MODEL_LOADING_MESSAGE = (
-    "Hey, I'm just busy downloading the weights from Hugging Face - please wait!"
-)
 from harmony.engine import Engine
 from harmony.jobs.runner import IndexJobRunner
 from harmony.models import SyncReport
+
+MODEL_LOADING_MESSAGE = (
+    "Hey, I'm just busy downloading the weights from Hugging Face - please wait!"
+)
 
 
 def _search_result_to_response(result: Any, query: dict[str, Any]) -> dict[str, Any]:
@@ -132,6 +133,7 @@ def create_app(
 
     @app.on_event("startup")
     def _startup() -> None:
+        engine.ensure_initialized()
         if preload_on_serve is not None:
             engine.config.embedding.preload_on_serve = preload_on_serve
         if engine.config.embedding.preload_on_serve:
@@ -143,6 +145,7 @@ def create_app(
 
     @app.post("/v1/init", response_model=InitResponse)
     def init_library() -> dict[str, str]:
+        """Idempotent setup — normally automatic on first server start."""
         engine.init()
         return InitResponse(data_dir=str(engine.config.data_dir)).model_dump()
 

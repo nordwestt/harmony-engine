@@ -25,22 +25,22 @@ cd harmony-engine
 export MUSIC_PATH=~/music   # host path to your library
 docker compose up -d
 
-curl http://localhost:8000/health
+curl http://localhost:8000/v1/health
 ```
 
-Index and search (paths are **inside the container**):
+Index and search. The compose file sets `HARMONY_INDEX_PATHS=/music`, so you can omit `paths`:
 
 ```bash
 curl -X POST http://localhost:8000/v1/index \
   -H 'Content-Type: application/json' \
-  -d '{"paths": ["/music"]}'
+  -d '{}'
 
 curl -X POST http://localhost:8000/v1/search/text \
   -H 'Content-Type: application/json' \
   -d '{"query": "melancholic piano", "k": 10}'
 ```
 
-The entrypoint runs `harmony init` on first boot if `/data/config.yaml` is missing.
+On first start the server auto-creates `/data/config.yaml`, the database, and index folders — no separate init step.
 
 ## GPU
 

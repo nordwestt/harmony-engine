@@ -6,8 +6,7 @@ cd "$(dirname "$0")/.."
 
 uv sync --extra db --extra embed --group dev
 
-uv run harmony init
-uv run harmony status
+uv run harmony status --local
 
 echo ""
 echo "Done. Run tests with:       uv run pytest"

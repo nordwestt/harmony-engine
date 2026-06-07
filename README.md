@@ -30,12 +30,12 @@ cd harmony-engine
 export MUSIC_PATH=~/music          # host path mounted read-only at /music
 docker compose up -d
 
-curl http://localhost:8000/health
+curl http://localhost:8000/v1/health   # ok once ready; "starting" while weights download
 
-# Index (use container path /music, not the host path)
+# Index (/music is the default scan path in Docker — paths optional)
 curl -X POST http://localhost:8000/v1/index \
   -H 'Content-Type: application/json' \
-  -d '{"paths": ["/music"]}'
+  -d '{}'
 
 curl -X POST http://localhost:8000/v1/search/text \
   -H 'Content-Type: application/json' \
@@ -60,8 +60,7 @@ uv sync --extra db --extra embed --extra api --group dev
 # terminal 1 — the engine
 uv run harmony serve
 
-# terminal 2 — everything hits the API
-uv run harmony init
+# terminal 2 — everything hits the API (data dir auto-initializes on first request)
 uv run harmony index ~/Music          # scan + embed (downloads model on first run)
 uv run harmony index ~/Music --prune  # also delete tracks removed from disk
 uv run harmony status
