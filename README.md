@@ -26,6 +26,8 @@ uv sync --extra db --extra embed --group dev
 
 uv run harmony init
 uv run harmony index ~/Music     # scan + embed (downloads model on first run)
+uv run harmony index ~/Music --prune   # also delete tracks removed from disk
+uv run harmony index ~/Music --reembed # force re-embed all tracks
 uv run harmony status
 uv run harmony search text "melancholic piano" --k 10
 ```

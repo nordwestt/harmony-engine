@@ -100,6 +100,7 @@ class SyncReport:
     removed: int = 0
     reembedded: int = 0
     embedded: int = 0
+    purged: int = 0
     failed: int = 0
     skipped: int = 0
     duration_ms: int = 0
@@ -114,6 +115,7 @@ class SyncReport:
             + self.removed
             + self.reembedded
             + self.embedded
+            + self.purged
             + self.failed
         )
 

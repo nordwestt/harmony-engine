@@ -102,7 +102,7 @@ def test_embed_pending_processes_unindexed_track(tmp_path: Path, wav_file: Path)
     store.conn.commit()
 
     pipeline = TrackEmbeddingPipeline(cfg, store, VectorStore(cfg), FakeEmbedder())
-    embedded, failed = pipeline.embed_pending()
+    embedded, failed = pipeline.embed_pending(reembed=True)
     assert embedded == 1
     assert failed == 0
     assert store.count_embedded_tracks() == 1

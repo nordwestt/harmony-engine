@@ -230,6 +230,40 @@ class MetadataStore:
         self.conn.commit()
         return track_id
 
+    def list_track_ids_by_status(self, status: TrackStatus) -> list[str]:
+        rows = self.conn.execute(
+            "SELECT track_id FROM tracks WHERE status = ?",
+            (status.value,),
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def list_all_track_ids(self) -> list[str]:
+        rows = self.conn.execute("SELECT track_id FROM tracks").fetchall()
+        return [row[0] for row in rows]
+
+    def set_tracks_status(self, track_ids: list[str], status: TrackStatus) -> None:
+        if not track_ids:
+            return
+        now_iso = _iso(utcnow())
+        for track_id in track_ids:
+            self.conn.execute(
+                "UPDATE tracks SET status = ?, updated_at = ? WHERE track_id = ?",
+                (status.value, now_iso, track_id),
+            )
+        self.conn.commit()
+
+    def delete_tracks(self, track_ids: list[str]) -> int:
+        if not track_ids:
+            return 0
+        for track_id in track_ids:
+            self.conn.execute("DELETE FROM chunks WHERE track_id = ?", (track_id,))
+            self.conn.execute("DELETE FROM track_locations WHERE track_id = ?", (track_id,))
+            self.conn.execute("DELETE FROM path_history WHERE track_id = ?", (track_id,))
+            self.conn.execute("DELETE FROM embedding_jobs WHERE track_id = ?", (track_id,))
+            self.conn.execute("DELETE FROM tracks WHERE track_id = ?", (track_id,))
+        self.conn.commit()
+        return len(track_ids)
+
     def mark_missing_not_in_scan(self, seen_paths: set[str]) -> int:
         """Mark active tracks whose primary path wasn't seen in the latest scan."""
         now_iso = _iso(utcnow())

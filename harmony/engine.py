@@ -14,6 +14,7 @@ from harmony.retrieval.filters import Filters
 from harmony.retrieval.search import SearchEngine
 from harmony.scanner.filesystem import FilesystemScanner
 from harmony.storage.metadata import MetadataStore
+from harmony.storage.purge import LibraryPurge
 from harmony.storage.sync import LibrarySync
 from harmony.storage.vectors import VectorStore
 
@@ -31,6 +32,7 @@ class Engine:
         self._embedder: MuQMuLanEmbedder | None = None
         self._pipeline: TrackEmbeddingPipeline | None = None
         self._index_manager: TrackIndexManager | None = None
+        self._purge: LibraryPurge | None = None
         self._search: SearchEngine | None = None
 
     @property
@@ -64,6 +66,8 @@ class Engine:
         paths: list[str | Path] | None = None,
         full_rescan: bool = False,  # noqa: ARG002 — reserved for future use
         embed: bool = True,
+        prune: bool = False,
+        reembed: bool = False,
     ) -> SyncReport:
         """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
         scan_paths = paths or self.config.filesystem.paths
@@ -73,20 +77,46 @@ class Engine:
         scanner = FilesystemScanner(scan_paths, config=self.config.filesystem)
         report = self.sync.reconcile(scanner)
 
+        if prune:
+            purged = self._get_purge().prune_missing()
+            report.purged = len(purged)
+            if purged:
+                self._get_index_manager().rebuild()
+
         if embed:
-            pending = self.store.list_tracks_pending_embedding()
-            if pending:
-                logger.info("Embedding %d pending track(s)", len(pending))
-            embedded, failed = self._get_pipeline().embed_pending()
+            embedded, failed = self._get_pipeline().embed_pending(reembed=reembed)
             report.embedded = embedded
             report.failed += failed
 
-            if embedded > 0:
+            if embedded > 0 or report.purged > 0:
                 self._get_index_manager().rebuild()
             else:
                 self._get_index_manager().ensure_loaded()
 
         return report
+
+    def purge(
+        self,
+        *,
+        missing: bool = False,
+        removed: bool = False,
+        orphans: bool = False,
+    ) -> dict[str, int]:
+        """Remove missing/removed tracks and orphan files from the store."""
+        purge_lib = self._get_purge()
+        counts = {"missing": 0, "removed": 0, "orphans": 0}
+
+        if missing:
+            counts["missing"] = len(purge_lib.prune_missing())
+        if removed:
+            counts["removed"] = len(purge_lib.purge_removed())
+        if orphans:
+            counts["orphans"] = purge_lib.purge_orphans()
+
+        if counts["missing"] or counts["removed"]:
+            self._get_index_manager().rebuild()
+
+        return counts
 
     def stats(self) -> dict[str, int | str]:
         """Return library statistics."""
@@ -145,6 +175,11 @@ class Engine:
         if self._index_manager is None:
             self._index_manager = TrackIndexManager(self.config, self.store, self.vectors)
         return self._index_manager
+
+    def _get_purge(self) -> LibraryPurge:
+        if self._purge is None:
+            self._purge = LibraryPurge(self.config, self.store, self.vectors)
+        return self._purge
 
     def _get_search(self) -> SearchEngine:
         if self._search is None:

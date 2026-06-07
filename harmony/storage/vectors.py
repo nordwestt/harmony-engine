@@ -66,3 +66,14 @@ class VectorStore:
         if not path.exists():
             return None
         return np.load(path)
+
+    def delete_track_vectors(self, track_id: str) -> None:
+        """Remove stored vectors for a track across all embedding versions."""
+        if not self.config.embeddings_dir.exists():
+            return
+        for version_dir in self.config.embeddings_dir.iterdir():
+            if not version_dir.is_dir():
+                continue
+            for subdir in ("tracks", "chunks"):
+                path = version_dir / subdir / f"{track_id}.npy"
+                path.unlink(missing_ok=True)

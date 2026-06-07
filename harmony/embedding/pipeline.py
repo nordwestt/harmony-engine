@@ -14,7 +14,7 @@ from harmony.audio.loader import load_audio
 from harmony.config import Config
 from harmony.embedding.base import Embedder
 from harmony.embedding.pooling import mean_pool
-from harmony.models import Track, utcnow
+from harmony.models import Track, TrackStatus, utcnow
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
 
@@ -65,13 +65,14 @@ class TrackEmbeddingPipeline:
     def embed_pending(
         self,
         *,
+        reembed: bool = False,
         on_progress: Callable[[int, int, str], None] | None = None,
     ) -> tuple[int, int]:
         """Embed all active tracks missing vectors at the current version.
 
         Returns (embedded_count, failed_count).
         """
-        pending = self.store.list_tracks_pending_embedding()
+        pending = self._tracks_to_embed(reembed=reembed)
         if not pending:
             return 0, 0
 
@@ -104,6 +105,33 @@ class TrackEmbeddingPipeline:
                 print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
 
         return embedded, failed
+
+    def _tracks_to_embed(self, *, reembed: bool) -> list[Track]:
+        version = self.config.embedding_version()
+
+        if reembed:
+            return [
+                t
+                for t in self.store.list_active_tracks()
+                if t.status in (TrackStatus.ACTIVE, TrackStatus.FAILED)
+            ]
+
+        pending: list[Track] = []
+        seen: set[str] = set()
+
+        for track in self.store.list_tracks_pending_embedding():
+            if track.track_id not in seen:
+                pending.append(track)
+                seen.add(track.track_id)
+
+        for track in self.store.list_embedded_tracks():
+            if track.track_id in seen:
+                continue
+            if self.vectors.load_track_vector(track.track_id, version) is None:
+                pending.append(track)
+                seen.add(track.track_id)
+
+        return pending
 
     def _embed_chunks_batched(
         self,

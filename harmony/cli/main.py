@@ -41,6 +41,16 @@ def init(ctx: click.Context) -> None:
 @click.option("--full", is_flag=True, help="Force full rescan (reserved)")
 @click.option("--watch", is_flag=True, help="Watch filesystem for changes (not yet implemented)")
 @click.option("--no-embed", is_flag=True, help="Scan metadata only, skip embedding")
+@click.option(
+    "--prune",
+    is_flag=True,
+    help="Delete tracks no longer on disk (skips the missing-file grace period)",
+)
+@click.option(
+    "--reembed",
+    is_flag=True,
+    help="Re-embed all tracks even if already indexed",
+)
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -48,6 +58,8 @@ def index(
     full: bool,
     watch: bool,
     no_embed: bool,
+    prune: bool,
+    reembed: bool,
 ) -> None:
     """Scan and reconcile a music library."""
     if watch:
@@ -60,7 +72,13 @@ def index(
     try:
         if not no_embed:
             click.echo("Scanning library…", err=True)
-        report = engine.index(paths=path_strs, full_rescan=full, embed=not no_embed)
+        report = engine.index(
+            paths=path_strs,
+            full_rescan=full,
+            embed=not no_embed,
+            prune=prune,
+            reembed=reembed,
+        )
     except (ValueError, NotImplementedError, ImportError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -71,6 +89,7 @@ def index(
     click.echo(f"Moved:      {report.moved}")
     click.echo(f"Skipped:    {report.skipped}")
     click.echo(f"Embedded:   {report.embedded}")
+    click.echo(f"Purged:     {report.purged}")
     click.echo(f"Failed:     {report.failed}")
     click.echo(f"Missing:    {report.missing}")
     click.echo(f"Removed:    {report.removed}")
@@ -197,16 +216,32 @@ def serve(ctx: click.Context, host: str, port: int) -> None:
 
 
 @cli.command()
-@click.option("--removed", is_flag=True, help="Purge removed tracks")
-@click.option("--orphans", is_flag=True, help="Purge orphan vector files")
+@click.option(
+    "--missing",
+    is_flag=True,
+    help="Delete tracks not found on disk (same as index --prune)",
+)
+@click.option("--removed", is_flag=True, help="Delete tracks already marked removed")
+@click.option("--orphans", is_flag=True, help="Delete orphan vector files on disk")
 @click.pass_context
-def purge(ctx: click.Context, removed: bool, orphans: bool) -> None:
-    """Purge removed tracks and orphan data."""
-    if not removed and not orphans:
-        click.echo("Specify --removed and/or --orphans", err=True)
+def purge(ctx: click.Context, missing: bool, removed: bool, orphans: bool) -> None:
+    """Purge missing/removed tracks and orphan data."""
+    if not missing and not removed and not orphans:
+        click.echo("Specify --missing, --removed, and/or --orphans", err=True)
         sys.exit(1)
-    click.echo("Purge is not yet implemented.", err=True)
-    sys.exit(1)
+
+    engine = Engine(ctx.obj["data_dir"])
+    try:
+        counts = engine.purge(missing=missing, removed=removed, orphans=orphans)
+    finally:
+        engine.close()
+
+    if missing:
+        click.echo(f"Purged missing: {counts['missing']}")
+    if removed:
+        click.echo(f"Purged removed: {counts['removed']}")
+    if orphans:
+        click.echo(f"Purged orphans: {counts['orphans']}")
 
 
 if __name__ == "__main__":
