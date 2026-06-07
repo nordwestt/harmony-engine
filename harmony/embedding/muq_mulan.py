@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+import threading
+from contextlib import contextmanager
+from typing import Any, Iterator
+
 import numpy as np
 
 from harmony.config import EmbeddingConfig
+from harmony.embedding.keep_alive import KeepAlivePolicy, parse_keep_alive
 
 EMBEDDING_DIM = 512
 DEFAULT_CHECKPOINT = "OpenMuQ/MuQ-MuLan-large"
@@ -26,8 +32,11 @@ class MuQMuLanEmbedder:
 
     def __init__(self, config: EmbeddingConfig | None = None) -> None:
         self.config = config or EmbeddingConfig()
-        self._model = None
+        self._model: Any = None
         self._device: str | None = None
+        self._unload_timer: threading.Timer | None = None
+        self._session_depth = 0
+        self._lock = threading.Lock()
 
     @property
     def name(self) -> str:
@@ -43,31 +52,97 @@ class MuQMuLanEmbedder:
             self._device = resolve_device(self.config.device)
         return self._device
 
+    @property
+    def is_loaded(self) -> bool:
+        return self._model is not None
+
+    @property
+    def keep_alive_policy(self) -> KeepAlivePolicy:
+        return parse_keep_alive(self.config.keep_alive)
+
     def _checkpoint(self) -> str:
         return self.config.checkpoint or DEFAULT_CHECKPOINT
 
-    def _ensure_model(self) -> object:
-        if self._model is not None:
-            return self._model
-        import sys
+    def preload(self) -> None:
+        """Load model weights into memory."""
+        self._ensure_model()
 
+    def unload(self) -> None:
+        """Release model weights from memory."""
+        with self._lock:
+            if self._unload_timer is not None:
+                self._unload_timer.cancel()
+                self._unload_timer = None
+            self._model = None
+            try:
+                import torch
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            except ImportError:
+                pass
+
+    @contextmanager
+    def session(self) -> Iterator[None]:
+        """Group multiple embed calls before applying keep-alive policy."""
+        self._session_depth += 1
         try:
-            import torch
-            from muq import MuQMuLan
-        except ImportError as e:
-            raise ImportError(
-                "MuQ-MuLan requires optional dependencies. "
-                "Install with: uv sync --extra embed"
-            ) from e
+            yield
+        finally:
+            self._session_depth -= 1
+            if self._session_depth == 0:
+                self._after_use()
 
-        checkpoint = self._checkpoint()
-        print(f"Loading MuQ-MuLan ({checkpoint}) on {self.device}…", file=sys.stderr)
-        model = MuQMuLan.from_pretrained(checkpoint)
-        print("Moving model to device…", file=sys.stderr)
-        model = model.to(self.device).eval()
-        print("Model ready.", file=sys.stderr)
-        self._model = model
-        return model
+    def _ensure_model(self) -> object:
+        with self._lock:
+            if self._unload_timer is not None:
+                self._unload_timer.cancel()
+                self._unload_timer = None
+
+            if self._model is not None:
+                return self._model
+
+            try:
+                import torch
+                from muq import MuQMuLan
+            except ImportError as e:
+                raise ImportError(
+                    "MuQ-MuLan requires optional dependencies. "
+                    "Install with: uv sync --extra embed"
+                ) from e
+
+            checkpoint = self._checkpoint()
+            print(f"Loading MuQ-MuLan ({checkpoint}) on {self.device}…", file=sys.stderr)
+            model = MuQMuLan.from_pretrained(checkpoint)
+            print("Moving model to device…", file=sys.stderr)
+            model = model.to(self.device).eval()
+            print("Model ready.", file=sys.stderr)
+            self._model = model
+            return model
+
+    def _after_use(self) -> None:
+        if self._session_depth > 0:
+            return
+
+        policy = self.keep_alive_policy
+        if policy.mode == "immediate":
+            self.unload()
+        elif policy.mode == "timed":
+            assert policy.minutes is not None
+            self._schedule_unload(policy.minutes)
+
+    def _schedule_unload(self, minutes: int) -> None:
+        with self._lock:
+            if self._unload_timer is not None:
+                self._unload_timer.cancel()
+
+            def _unload() -> None:
+                print(f"Unloading model after {minutes} minutes idle.", file=sys.stderr)
+                self.unload()
+
+            self._unload_timer = threading.Timer(minutes * 60, _unload)
+            self._unload_timer.daemon = True
+            self._unload_timer.start()
 
     def embed_audio(self, waveform: np.ndarray, sample_rate: int) -> np.ndarray:
         vectors = self.embed_audio_batch([waveform], sample_rate=sample_rate)
@@ -114,24 +189,30 @@ class MuQMuLanEmbedder:
         return arr.astype(np.float32)
 
     def embed_text(self, text: str) -> np.ndarray:
-        vectors = self.embed_text_batch([text])
-        return vectors[0]
+        try:
+            vectors = self.embed_text_batch([text])
+            return vectors[0]
+        finally:
+            self._after_use()
 
     def embed_text_batch(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.empty((0, EMBEDDING_DIM), dtype=np.float32)
 
-        model = self._ensure_model()
-        import torch
+        try:
+            model = self._ensure_model()
+            import torch
 
-        with torch.no_grad():
-            embeds = model(texts=texts)
+            with torch.no_grad():
+                embeds = model(texts=texts)
 
-        if isinstance(embeds, torch.Tensor):
-            arr = embeds.detach().cpu().numpy()
-        else:
-            arr = np.asarray(embeds, dtype=np.float32)
+            if isinstance(embeds, torch.Tensor):
+                arr = embeds.detach().cpu().numpy()
+            else:
+                arr = np.asarray(embeds, dtype=np.float32)
 
-        if arr.ndim == 1:
-            arr = arr.reshape(1, -1)
-        return arr.astype(np.float32)
+            if arr.ndim == 1:
+                arr = arr.reshape(1, -1)
+            return arr.astype(np.float32)
+        finally:
+            self._after_use()

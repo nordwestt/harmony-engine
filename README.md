@@ -32,6 +32,22 @@ uv run harmony status
 uv run harmony search text "melancholic piano" --k 10
 ```
 
+### Fast repeated search (model stays loaded)
+
+Each standalone `harmony search` reloads the model. For interactive use, run the API server:
+
+```bash
+# terminal 1
+uv sync --extra api --extra embed
+uv run harmony serve
+
+# terminal 2
+export HARMONY_API_URL=http://127.0.0.1:8000
+uv run harmony search text "melancholic piano" --k 10
+```
+
+See [docs/model-cache.md](docs/model-cache.md) for `keep_alive` settings (`immediate`, `30` minutes, `forever`).
+
 Metadata-only rescan (no GPU work):
 
 ```bash

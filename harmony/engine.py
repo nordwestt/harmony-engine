@@ -152,7 +152,23 @@ class Engine:
     ) -> SearchResult:
         return self._get_search().search_by_track(track_id, k=k, filters=filters)
 
+    def preload_model(self) -> None:
+        """Load embedding model weights into memory."""
+        self._get_embedder().preload()
+
+    def model_status(self) -> dict[str, str | bool]:
+        embedder = self._get_embedder()
+        policy = embedder.keep_alive_policy  # type: ignore[attr-defined]
+        return {
+            "loaded": embedder.is_loaded,  # type: ignore[attr-defined]
+            "device": embedder.device,  # type: ignore[attr-defined]
+            "keep_alive": policy.label,  # type: ignore[attr-defined]
+            "checkpoint": self.config.embedding.checkpoint,
+        }
+
     def close(self) -> None:
+        if self._embedder is not None:
+            self._embedder.unload()
         if self._store is not None:
             self._store.close()
 

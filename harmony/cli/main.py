@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from harmony import __version__
+from harmony.client import default_api_url, search_text as api_search_text
 from harmony.engine import Engine
 
 
@@ -153,9 +154,32 @@ def search() -> None:
 @click.argument("query")
 @click.option("--k", default=50, show_default=True)
 @click.option("--json", "as_json", is_flag=True, help="Output JSON")
+@click.option(
+    "--api",
+    "api_url",
+    default=None,
+    help="Use a running harmony serve API (default: $HARMONY_API_URL)",
+)
 @click.pass_context
-def search_text(ctx: click.Context, query: str, k: int, as_json: bool) -> None:
+def search_text(
+    ctx: click.Context,
+    query: str,
+    k: int,
+    as_json: bool,
+    api_url: str | None,
+) -> None:
     """Search by natural language query."""
+    api_url = api_url or default_api_url()
+
+    if api_url:
+        try:
+            payload = api_search_text(api_url, query, k=k)
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        _print_search_payload(payload, as_json=as_json)
+        return
+
     engine = Engine(ctx.obj["data_dir"])
     try:
         result = engine.search_by_text(query, k=k)
@@ -194,24 +218,60 @@ def search_text(ctx: click.Context, query: str, k: int, as_json: bool) -> None:
         )
 
 
+def _print_search_payload(payload: dict, *, as_json: bool) -> None:
+    if as_json:
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    items = payload.get("items", [])
+    if not items:
+        click.echo("No results.")
+        return
+
+    for item in items:
+        meta = item.get("metadata", {})
+        click.echo(
+            f"{item['score']:6.3f}  {meta.get('artist', '')} — {meta.get('title', '')}"
+        )
+
+
 @cli.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8000, show_default=True)
+@click.option(
+    "--no-preload",
+    is_flag=True,
+    help="Do not load the embedding model until the first search/index request",
+)
 @click.pass_context
-def serve(ctx: click.Context, host: str, port: int) -> None:
-    """Start the HTTP API server."""
+def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
+    """Start the HTTP API server (keeps the model loaded between searches)."""
     try:
         import uvicorn
         from harmony.api.app import create_app
     except ImportError:
         click.echo(
             "API server requires optional dependencies. "
-            "Install with: pip install harmony-engine[api]",
+            "Install with: uv sync --extra api --extra embed",
             err=True,
         )
         sys.exit(1)
 
-    app = create_app(data_dir=ctx.obj["data_dir"])
+    engine = Engine(ctx.obj["data_dir"])
+    policy = engine.model_status()["keep_alive"]
+    engine.close()
+
+    click.echo(f"Model keep-alive: {policy}", err=True)
+    click.echo(
+        f"API listening on http://{host}:{port}  "
+        f"(set HARMONY_API_URL=http://{host}:{port} for fast CLI search)",
+        err=True,
+    )
+
+    app = create_app(
+        data_dir=ctx.obj["data_dir"],
+        preload_on_serve=False if no_preload else None,
+    )
     uvicorn.run(app, host=host, port=port)
 
 

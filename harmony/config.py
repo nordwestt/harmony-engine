@@ -23,6 +23,9 @@ class EmbeddingConfig:
     checkpoint: str = "OpenMuQ/MuQ-MuLan-large"
     device: str = "auto"
     batch_size: int = 8
+    # Keep model in RAM: false/0/"immediate", minutes (e.g. 30), or "forever"
+    keep_alive: str | int | bool = "forever"
+    preload_on_serve: bool = True
 
 
 @dataclass

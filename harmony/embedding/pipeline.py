@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from collections.abc import Callable
+from contextlib import nullcontext
 from pathlib import Path
 
 import numpy as np
@@ -54,7 +55,8 @@ class TrackEmbeddingPipeline:
             raise ValueError(f"No embeddable audio in {track.primary_path}")
 
         chunk_waveforms = [c[0] for c in chunks]
-        chunk_embeddings = self._embed_chunks_batched(chunk_waveforms, sample_rate)
+        with self.embedder.session():  # type: ignore[attr-defined]
+            chunk_embeddings = self._embed_chunks_batched(chunk_waveforms, sample_rate)
         track_vector = mean_pool(chunk_embeddings)
 
         version = self.config.embedding_version()
@@ -90,19 +92,23 @@ class TrackEmbeddingPipeline:
         except ImportError:
             pass
 
-        for i, track in enumerate(iterator, start=1):
-            label = f"{track.artist} — {track.title}"
-            try:
-                self.embed_track(track)
-                embedded += 1
-                logger.info("Embedded %s — %s", track.artist, track.title)
-                if on_progress:
-                    on_progress(i, total, label)
-            except Exception:
-                failed += 1
-                logger.exception("Failed to embed %s", track.primary_path)
-                self.store.mark_track_failed(track.track_id, utcnow())
-                print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
+        session_factory = getattr(self.embedder, "session", None)
+        outer = session_factory() if session_factory else nullcontext()
+
+        with outer:
+            for i, track in enumerate(iterator, start=1):
+                label = f"{track.artist} — {track.title}"
+                try:
+                    self.embed_track(track)
+                    embedded += 1
+                    logger.info("Embedded %s — %s", track.artist, track.title)
+                    if on_progress:
+                        on_progress(i, total, label)
+                except Exception:
+                    failed += 1
+                    logger.exception("Failed to embed %s", track.primary_path)
+                    self.store.mark_track_failed(track.track_id, utcnow())
+                    print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
 
         return embedded, failed
 

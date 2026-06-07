@@ -805,6 +805,8 @@ embedding:
   model: muq-mulan
   device: auto          # cuda | cpu | auto
   batch_size: 16
+  keep_alive: forever   # immediate | minutes (30) | forever
+  preload_on_serve: true
 
 audio:
   target_sample_rate: 24000
