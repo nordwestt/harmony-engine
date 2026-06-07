@@ -4,12 +4,10 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        python3.12 \
-        python3.12-venv \
-        python3-pip \
         curl \
         ca-certificates \
         libsndfile1 \
+        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -21,9 +19,10 @@ COPY harmony ./harmony
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
-ENV UV_PYTHON=python3.12
 
-RUN uv sync --extra db --extra embed --extra api --no-dev \
+# Ubuntu 22.04 has no python3.12 apt package — uv downloads CPython 3.12 directly.
+RUN uv python install 3.12 \
+    && uv sync --python 3.12 --extra db --extra embed --extra api --no-dev \
     && uv pip install --reinstall \
         torch --index-url https://download.pytorch.org/whl/cu121
 
