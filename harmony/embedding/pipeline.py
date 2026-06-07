@@ -88,6 +88,9 @@ class TrackEmbeddingPipeline:
         embedded_ids: list[str] = []
         iterator: object = pending
 
+        if on_progress:
+            on_progress(0, total, "")
+
         try:
             from tqdm import tqdm
 
@@ -99,20 +102,20 @@ class TrackEmbeddingPipeline:
         outer = session_factory() if session_factory else nullcontext()
 
         with outer:
-            for i, track in enumerate(iterator, start=1):
+            for track in iterator:
                 label = f"{track.artist} — {track.title}"
                 try:
                     self.embed_track(track)
                     embedded += 1
                     embedded_ids.append(track.track_id)
                     logger.info("Embedded %s — %s", track.artist, track.title)
-                    if on_progress:
-                        on_progress(i, total, label)
                 except Exception:
                     failed += 1
                     logger.exception("Failed to embed %s", track.primary_path)
                     self.store.mark_track_failed(track.track_id, utcnow())
                     print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
+                if on_progress:
+                    on_progress(embedded, total, label)
 
         return embedded, failed, embedded_ids
 

@@ -91,6 +91,11 @@ class RetrievalConfig:
 
 
 @dataclass
+class JobsConfig:
+    resume_on_startup: bool = True
+
+
+@dataclass
 class FilesystemConfig:
     paths: list[str] = field(default_factory=list)
     extensions: list[str] = field(
@@ -108,6 +113,7 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     index: IndexConfig = field(default_factory=IndexConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
+    jobs: JobsConfig = field(default_factory=JobsConfig)
     filesystem: FilesystemConfig = field(default_factory=FilesystemConfig)
 
     @property
@@ -171,6 +177,7 @@ class Config:
             sync=_merge(SyncConfig, data.get("sync")),
             index=_merge(IndexConfig, data.get("index")),
             retrieval=_merge(RetrievalConfig, data.get("retrieval")),
+            jobs=_merge(JobsConfig, data.get("jobs")),
             filesystem=_merge(FilesystemConfig, data.get("filesystem")),
         )
 

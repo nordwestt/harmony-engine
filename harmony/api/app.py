@@ -198,6 +198,12 @@ def create_app(
         engine.ensure_initialized()
         if preload_on_serve is not None:
             engine.config.embedding.preload_on_serve = preload_on_serve
+        recovered = jobs.recover_stale_jobs()
+        if recovered:
+            logger.info("Marked %d stale index job(s) as interrupted", recovered)
+        resumed = jobs.maybe_resume_interrupted_job()
+        if resumed is not None:
+            logger.info("Resuming interrupted index job %s", resumed.job_id)
         if engine.config.embedding.preload_on_serve:
             engine.preload_model_background()
 
@@ -346,6 +352,24 @@ def create_app(
         if state is None:
             raise HTTPException(status_code=404, detail=f"Job not found: {job_id}")
         return _job_status_response(state)
+
+    @app.post("/v1/index/jobs/{job_id}/resume", response_model=IndexJobResponse)
+    def resume_index_job(job_id: str) -> dict[str, Any]:
+        try:
+            state = jobs.resume(job_id)
+        except ValueError as e:
+            detail = str(e)
+            if detail.startswith("Job not found"):
+                raise HTTPException(status_code=404, detail=detail) from e
+            raise HTTPException(status_code=400, detail=detail) from e
+        except RuntimeError as e:
+            if str(e) == "index_job_running":
+                raise HTTPException(
+                    status_code=409,
+                    detail="An index job is already running",
+                ) from e
+            raise
+        return IndexJobResponse(job_id=state.job_id, status=state.status).model_dump()
 
     @app.post("/v1/search/text", response_model=SearchResponse)
     def search_text(req: TextSearchRequest) -> dict[str, Any]:

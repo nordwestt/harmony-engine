@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -42,6 +42,8 @@ def migrate(conn: Any) -> None:
     if current < SCHEMA_VERSION:
         if current < 2:
             _migrate_v2(conn)
+        if current < 3:
+            _migrate_v3(conn)
         _set_schema_version(conn, SCHEMA_VERSION)
         conn.commit()
 
@@ -84,4 +86,14 @@ def _migrate_v2(conn: Any) -> None:
             finished_at TEXT
         )
         """
+    )
+
+
+def _migrate_v3(conn: Any) -> None:
+    try:
+        conn.execute("ALTER TABLE index_jobs ADD COLUMN params_json TEXT")
+    except Exception:
+        pass
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_index_jobs_status ON index_jobs(status)"
     )

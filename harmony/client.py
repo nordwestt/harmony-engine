@@ -149,9 +149,15 @@ def wait_for_index_job(
         if on_progress is not None:
             on_progress(status)
         state = status.get("status")
-        if state in ("completed", "failed"):
+        if state in ("completed", "failed", "interrupted"):
             if state == "failed":
                 raise RuntimeError(status.get("error") or "Index job failed")
+            if state == "interrupted":
+                raise RuntimeError(
+                    status.get("error")
+                    or "Index job was interrupted (server restarted). "
+                    "Resume with POST /v1/index/jobs/{job_id}/resume or start a new index."
+                )
             return status
         time.sleep(poll_interval)
 

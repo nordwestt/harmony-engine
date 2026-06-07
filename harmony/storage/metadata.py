@@ -19,6 +19,23 @@ from harmony.models import (
 )
 from harmony.storage.db import connect, migrate
 
+INDEX_JOB_COLUMNS = (
+    "job_id",
+    "status",
+    "phase",
+    "embedded",
+    "total_pending",
+    "failed",
+    "error",
+    "report_json",
+    "params_json",
+    "created_at",
+    "updated_at",
+    "started_at",
+    "finished_at",
+)
+INDEX_JOB_SELECT = ", ".join(INDEX_JOB_COLUMNS)
+
 
 def _iso(dt: datetime | None) -> str | None:
     if dt is None:
@@ -188,6 +205,7 @@ class MetadataStore:
         failed: int,
         error: str | None,
         report_json: str | None,
+        params_json: str | None = None,
         created_at: str,
         updated_at: str,
         started_at: str | None,
@@ -197,8 +215,9 @@ class MetadataStore:
             """
             INSERT INTO index_jobs (
                 job_id, status, phase, embedded, total_pending, failed,
-                error, report_json, created_at, updated_at, started_at, finished_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                error, report_json, params_json, created_at, updated_at,
+                started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(job_id) DO UPDATE SET
                 status = excluded.status,
                 phase = excluded.phase,
@@ -207,6 +226,7 @@ class MetadataStore:
                 failed = excluded.failed,
                 error = excluded.error,
                 report_json = excluded.report_json,
+                params_json = COALESCE(excluded.params_json, index_jobs.params_json),
                 updated_at = excluded.updated_at,
                 started_at = excluded.started_at,
                 finished_at = excluded.finished_at
@@ -220,6 +240,7 @@ class MetadataStore:
                 failed,
                 error,
                 report_json,
+                params_json,
                 created_at,
                 updated_at,
                 started_at,
@@ -228,20 +249,68 @@ class MetadataStore:
         )
         self.conn.commit()
 
+    def has_active_index_job(self) -> bool:
+        row = self.conn.execute(
+            """
+            SELECT 1 FROM index_jobs
+            WHERE status IN ('pending', 'running')
+            LIMIT 1
+            """,
+        ).fetchone()
+        return row is not None
+
+    def list_index_jobs(self, *, status_in: tuple[str, ...]) -> list[dict[str, Any]]:
+        placeholders = ", ".join("?" for _ in status_in)
+        rows = self.conn.execute(
+            f"""
+            SELECT {INDEX_JOB_SELECT} FROM index_jobs
+            WHERE status IN ({placeholders})
+            ORDER BY created_at ASC
+            """,
+            status_in,
+        ).fetchall()
+        return [self._row_to_index_job(r) for r in rows]
+
+    def get_latest_index_job(self, *, status: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            f"""
+            SELECT {INDEX_JOB_SELECT} FROM index_jobs
+            WHERE status = ?
+            ORDER BY COALESCE(started_at, created_at) DESC
+            LIMIT 1
+            """,
+            (status,),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._row_to_index_job(row)
+
+    def has_tracks_pending_embedding(self) -> bool:
+        version = self.config.embedding_version()
+        row = self.conn.execute(
+            """
+            SELECT 1 FROM tracks
+            WHERE status IN ('active', 'failed')
+              AND (indexed_at IS NULL OR embedding_version != ?)
+            LIMIT 1
+            """,
+            (version,),
+        ).fetchone()
+        return row is not None
+
     def get_index_job(self, job_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
-            "SELECT * FROM index_jobs WHERE job_id = ?",
+            f"SELECT {INDEX_JOB_SELECT} FROM index_jobs WHERE job_id = ?",
             (job_id,),
         ).fetchone()
         if row is None:
             return None
+        return self._row_to_index_job(row)
+
+    def _row_to_index_job(self, row: Any) -> dict[str, Any]:
         if hasattr(row, "keys"):
-            return {k: row[k] for k in row.keys()}
-        cols = [
-            "job_id", "status", "phase", "embedded", "total_pending", "failed",
-            "error", "report_json", "created_at", "updated_at", "started_at", "finished_at",
-        ]
-        return {cols[i]: row[i] for i in range(len(cols))}
+            return {col: row[col] for col in INDEX_JOB_COLUMNS}
+        return {col: row[i] for i, col in enumerate(INDEX_JOB_COLUMNS)}
 
     def count_embedded_tracks(self) -> int:
         version = self.config.embedding_version()

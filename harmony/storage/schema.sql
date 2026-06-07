@@ -107,11 +107,14 @@ CREATE TABLE IF NOT EXISTS index_jobs (
     failed INTEGER NOT NULL DEFAULT 0,
     error TEXT,
     report_json TEXT,
+    params_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT
 );
+
+CREATE INDEX IF NOT EXISTS idx_index_jobs_status ON index_jobs(status);
 
 CREATE TABLE IF NOT EXISTS query_cache (
     query_id TEXT PRIMARY KEY,

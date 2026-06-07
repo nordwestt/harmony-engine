@@ -50,6 +50,7 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 | `POST /v1/init` | Optional idempotent setup (automatic on first `harmony serve`) |
 | `POST /v1/index` | Scan, embed, update index |
 | `GET /v1/index/jobs/{job_id}` | Background index job status |
+| `POST /v1/index/jobs/{job_id}/resume` | Resume an interrupted embed job |
 | `POST /v1/search/text` | Text → similar tracks |
 | `POST /v1/search/track` | Track → similar tracks |
 | `GET /v1/library/stats` | Library statistics |
@@ -115,6 +116,33 @@ uv run harmony index ~/music --async
 ```
 
 Only one index job runs per data directory at a time. A second request returns `409 Conflict`.
+
+### Job resume
+
+Async jobs persist state to the database. If the server restarts while a job is `pending` or `running`, it is marked `interrupted` on startup. Embedding is checkpointed per track — unembedded tracks are picked up when the job resumes.
+
+By default (`jobs.resume_on_startup: true` in `config.yaml`), the server automatically resumes the latest interrupted embed job when tracks remain pending. Disable with:
+
+```yaml
+jobs:
+  resume_on_startup: false
+```
+
+Manual resume (reuses the same `job_id`):
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/index/jobs/{job_id}/resume
+```
+
+Jobs interrupted before params were persisted (older versions) reconstruct default settings (`embed: true`, configured scan paths) on resume.
+
+Job statuses: `pending` → `running` → `completed` | `failed` | `interrupted` (resumable).
+
+Progress fields on `GET /v1/index/jobs/{job_id}`:
+
+- `embedded` — tracks successfully embedded **across the whole job**, including work done before an interrupt
+- `total_pending` — total embed scope (`embedded` at start of embed phase + tracks remaining this run)
+- On resume, counts continue from where they left off (e.g. 12/22 → 13/22) rather than resetting
 
 Search remains available during indexing. Each newly embedded track is searchable as soon as it is upserted into the index.
 
