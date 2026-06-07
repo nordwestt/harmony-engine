@@ -6,7 +6,6 @@ import logging
 import sys
 from collections.abc import Callable
 from contextlib import nullcontext
-from pathlib import Path
 
 import numpy as np
 

@@ -9,7 +9,7 @@ import numpy as np
 
 
 class FaissIndex:
-    def __init__(self, *, metric: str = "cosine", dimension: int = 512) -> None:
+    def __init__(self, *, metric: str = "cosine", dimension: int) -> None:
         self.metric = metric
         self.dimension = dimension
         self._index = None

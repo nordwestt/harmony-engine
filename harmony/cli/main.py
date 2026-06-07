@@ -366,7 +366,7 @@ def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
     except ImportError:
         click.echo(
             "API server requires optional dependencies. "
-            "Install with: uv sync --extra api --extra embed",
+            "Install with: uv sync --extra api --extra embed --extra embed-muq",
             err=True,
         )
         sys.exit(1)

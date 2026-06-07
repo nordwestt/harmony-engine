@@ -23,7 +23,7 @@ ENV PATH="/app/.venv/bin:$PATH"
 RUN uv venv \
     && uv pip install torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cpu \
-    && uv sync --extra db --extra embed --extra api-minimal --no-dev \
+    && uv sync --extra db --extra embed --extra embed-muq --extra api-minimal --no-dev \
         --no-install-package torch --no-install-package torchaudio --no-install-package torchvision \
     && uv pip install --reinstall \
         torch torchaudio torchvision \
@@ -32,7 +32,9 @@ RUN uv venv \
     && /app/.venv/bin/python -c "\
 import torch, torchaudio, torchvision; \
 import torchvision.transforms; \
-from muq import MuQMuLan; \
+from harmony.config import Config; \
+from harmony.embedding.factory import create_embedder; \
+create_embedder(Config()); \
 assert not torch.backends.cuda.is_built(); \
 print('pytorch', torch.__version__, 'torchvision', torchvision.__version__)" \
     && find /app/.venv -type d -name __pycache__ -exec rm -rf {} + \

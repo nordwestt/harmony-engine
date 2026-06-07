@@ -667,6 +667,11 @@ dev = [
 ]
 embed = [
     { name = "librosa" },
+    { name = "soundfile" },
+    { name = "torch" },
+]
+embed-muq = [
+    { name = "librosa" },
     { name = "muq" },
     { name = "soundfile" },
     { name = "torch" },
@@ -692,10 +697,11 @@ requires-dist = [
     { name = "faiss-cpu", marker = "extra == 'index'", specifier = ">=1.7" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.110" },
     { name = "fastapi", marker = "extra == 'api-minimal'", specifier = ">=0.110" },
-    { name = "harmony-engine", extras = ["db", "audio", "embed", "index", "api", "watch", "dev"], marker = "extra == 'all'" },
+    { name = "harmony-engine", extras = ["db", "audio", "embed", "embed-muq", "index", "api", "watch", "dev"], marker = "extra == 'all'" },
+    { name = "harmony-engine", extras = ["embed"], marker = "extra == 'embed-muq'" },
     { name = "librosa", marker = "extra == 'audio'", specifier = ">=0.10" },
     { name = "librosa", marker = "extra == 'embed'", specifier = ">=0.10" },
-    { name = "muq", marker = "extra == 'embed'", specifier = ">=0.1.0" },
+    { name = "muq", marker = "extra == 'embed-muq'", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
@@ -710,7 +716,7 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
 ]
-provides-extras = ["db", "audio", "embed", "index", "api", "api-minimal", "watch", "dev", "all"]
+provides-extras = ["db", "audio", "embed", "embed-muq", "index", "api", "api-minimal", "watch", "dev", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -28,7 +28,7 @@ RUN uv python install 3.12 \
     && uv venv --python 3.12 \
     && uv pip install torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cu121 \
-    && uv sync --python 3.12 --extra db --extra embed --extra api-minimal --no-dev \
+    && uv sync --python 3.12 --extra db --extra embed --extra embed-muq --extra api-minimal --no-dev \
         --no-install-package torch --no-install-package torchaudio --no-install-package torchvision \
     && uv pip install --reinstall \
         torch torchaudio torchvision \
@@ -36,7 +36,9 @@ RUN uv python install 3.12 \
     && /app/.venv/bin/python -c "\
 import torch, torchaudio, torchvision; \
 import torchvision.transforms; \
-from muq import MuQMuLan; \
+from harmony.config import Config; \
+from harmony.embedding.factory import create_embedder; \
+create_embedder(Config()); \
 assert torch.backends.cuda.is_built(); \
 print('pytorch', torch.__version__, 'torchvision', torchvision.__version__)" \
     && find /app/.venv -type d -name __pycache__ -exec rm -rf {} + \

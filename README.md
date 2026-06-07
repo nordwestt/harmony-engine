@@ -1,6 +1,6 @@
 # Harmony Engine
 
-Self-hosted music library indexer and vector search engine powered by [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large).
+Self-hosted music library indexer and vector search engine with pluggable embedding backends. The default embedder is [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large); select others via `embedding.model` in config.
 
 Harmony turns a local music collection into searchable embeddings and exposes retrieval primitives (text → tracks, track → similar tracks, etc.) that higher-level apps — playlist generators, DJ tools, recommendation UIs — build on.
 
@@ -11,7 +11,7 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 **Phase 0** — working today:
 
 - Filesystem scan + content-hash identity + library sync
-- Audio load, resample (24 kHz), chunk, MuQ-MuLan embed
+- Audio load, resample (24 kHz), chunk, embed (default: MuQ-MuLan)
 - Track vectors persisted to disk + brute-force cosine search
 - `harmony search text "dreamy night drive"`
 
@@ -55,7 +55,7 @@ See [docs/docker.md](docs/docker.md) for volumes, env vars, upgrades, and troubl
 Uses [uv](https://docs.astral.sh/uv/). Run the server first; the CLI auto-detects it and indexes/search without restart.
 
 ```bash
-uv sync --extra db --extra embed --extra api --group dev
+uv sync --extra db --extra embed --extra embed-muq --extra api --group dev
 
 # terminal 1 — the engine
 uv run harmony serve
@@ -98,7 +98,7 @@ harmony/
 ├── engine.py
 ├── scanner/       # filesystem discovery
 ├── audio/         # decode, resample, chunk
-├── embedding/     # MuQ-MuLan + pipeline
+├── embedding/     # embedder backends + pipeline
 ├── index/         # brute-force ANN + manager
 ├── retrieval/     # search
 └── cli/
