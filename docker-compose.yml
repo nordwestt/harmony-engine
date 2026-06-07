@@ -1,5 +1,8 @@
 services:
   harmony:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ${HARMONY_IMAGE:-ghcr.io/nordwestt/harmony-engine:latest}
     ports:
       - "${PORT:-8000}:8000"

@@ -192,9 +192,20 @@ class Engine:
         model = self.model_status()
         index_size = self._get_index_manager().ensure_loaded().size
         embedded = self.store.count_embedded_tracks()
+        loading = bool(model["loading"])
+        loaded = bool(model["loaded"])
+        message: str | None = None
+        if loading:
+            message = (
+                "Hey, I'm just busy downloading the weights from Hugging Face - please wait!"
+            )
+        elif model["load_error"]:
+            message = str(model["load_error"])
         return {
-            "ready": bool(model["loaded"]) and index_size > 0,
-            "model_loaded": bool(model["loaded"]),
+            "ready": loaded and index_size > 0,
+            "model_loaded": loaded,
+            "model_loading": loading,
+            "message": message,
             "index_size": index_size,
             "tracks_embedded": embedded,
         }
@@ -237,11 +248,17 @@ class Engine:
         """Load embedding model weights into memory."""
         self._get_embedder().preload()
 
-    def model_status(self) -> dict[str, str | bool]:
+    def preload_model_background(self) -> None:
+        """Start loading embedding model weights in a background thread."""
+        self._get_embedder().preload_background()
+
+    def model_status(self) -> dict[str, str | bool | None]:
         embedder = self._get_embedder()
         policy = embedder.keep_alive_policy  # type: ignore[attr-defined]
         return {
             "loaded": embedder.is_loaded,  # type: ignore[attr-defined]
+            "loading": embedder.is_loading,  # type: ignore[attr-defined]
+            "load_error": embedder.load_error,  # type: ignore[attr-defined]
             "device": embedder.device,  # type: ignore[attr-defined]
             "keep_alive": policy.label,  # type: ignore[attr-defined]
             "checkpoint": self.config.embedding.checkpoint,

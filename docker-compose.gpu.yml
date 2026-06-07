@@ -1,5 +1,8 @@
 services:
   harmony:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
     image: ${HARMONY_IMAGE:-ghcr.io/nordwestt/harmony-engine:cuda}
     runtime: nvidia
     deploy:

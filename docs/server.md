@@ -43,7 +43,8 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /health` | Liveness probe |
+| `GET /health` | Liveness probe (always `ok` once the server is listening) |
+| `GET /v1/health` | Startup status; returns a friendly message while model weights download |
 | `GET /v1/ready` | Model loaded and index has vectors |
 | `POST /v1/init` | Initialize data directory |
 | `POST /v1/index` | Scan, embed, update index |

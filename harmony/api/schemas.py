@@ -74,9 +74,16 @@ class InitResponse(BaseModel):
     status: str = "initialized"
 
 
+class HealthResponse(BaseModel):
+    status: str
+    message: str
+
+
 class ReadyResponse(BaseModel):
     ready: bool
     model_loaded: bool
+    model_loading: bool = False
+    message: str | None = None
     index_size: int
     tracks_embedded: int
 

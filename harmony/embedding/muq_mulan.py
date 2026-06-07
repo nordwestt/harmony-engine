@@ -36,6 +36,8 @@ class MuQMuLanEmbedder:
         self._device: str | None = None
         self._unload_timer: threading.Timer | None = None
         self._session_depth = 0
+        self._loading = False
+        self._load_error: str | None = None
         self._lock = threading.Lock()
 
     @property
@@ -57,6 +59,14 @@ class MuQMuLanEmbedder:
         return self._model is not None
 
     @property
+    def is_loading(self) -> bool:
+        return self._loading
+
+    @property
+    def load_error(self) -> str | None:
+        return self._load_error
+
+    @property
     def keep_alive_policy(self) -> KeepAlivePolicy:
         return parse_keep_alive(self.config.keep_alive)
 
@@ -66,6 +76,27 @@ class MuQMuLanEmbedder:
     def preload(self) -> None:
         """Load model weights into memory."""
         self._ensure_model()
+
+    def preload_background(self) -> None:
+        """Start loading model weights in a background thread."""
+        with self._lock:
+            if self._model is not None or self._loading:
+                return
+            self._loading = True
+            self._load_error = None
+
+        def _run() -> None:
+            try:
+                self._ensure_model()
+            except Exception as e:
+                with self._lock:
+                    self._load_error = str(e)
+            finally:
+                with self._lock:
+                    self._loading = False
+
+        thread = threading.Thread(target=_run, daemon=True, name="muq-preload")
+        thread.start()
 
     def unload(self) -> None:
         """Release model weights from memory."""

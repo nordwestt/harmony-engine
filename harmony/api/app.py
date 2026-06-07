@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 
 from harmony.api.schemas import (
     ErrorResponse,
+    HealthResponse,
     IndexJobResponse,
     IndexJobStatus,
     IndexRequest,
@@ -23,6 +24,10 @@ from harmony.api.schemas import (
     TrackDetailResponse,
     TrackSearchRequest,
     TracksListResponse,
+)
+
+MODEL_LOADING_MESSAGE = (
+    "Hey, I'm just busy downloading the weights from Hugging Face - please wait!"
 )
 from harmony.engine import Engine
 from harmony.jobs.runner import IndexJobRunner
@@ -88,13 +93,14 @@ def create_app(
     data_dir: Path | str | None = None,
     *,
     preload_on_serve: bool | None = None,
+    engine: Engine | None = None,
 ) -> FastAPI:
     app = FastAPI(
         title="Harmony Engine",
         version="0.1.0",
         description="Music library indexing and vector search API",
     )
-    engine = Engine(data_dir)
+    engine = engine or Engine(data_dir)
     jobs = IndexJobRunner(engine)
 
     @app.exception_handler(HTTPException)
@@ -129,7 +135,7 @@ def create_app(
         if preload_on_serve is not None:
             engine.config.embedding.preload_on_serve = preload_on_serve
         if engine.config.embedding.preload_on_serve:
-            engine.preload_model()
+            engine.preload_model_background()
 
     @app.on_event("shutdown")
     def _shutdown() -> None:
@@ -147,6 +153,21 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/v1/health", response_model=HealthResponse)
+    def v1_health() -> dict[str, str]:
+        model = engine.model_status()
+        if model["loading"]:
+            return HealthResponse(
+                status="starting",
+                message=MODEL_LOADING_MESSAGE,
+            ).model_dump()
+        if model["load_error"]:
+            return HealthResponse(
+                status="error",
+                message=str(model["load_error"]),
+            ).model_dump()
+        return HealthResponse(status="ok", message="Ready").model_dump()
 
     @app.get("/v1/library/stats")
     def library_stats() -> dict[str, Any]:

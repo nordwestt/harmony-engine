@@ -1,4 +1,4 @@
-# --- builder: install deps with CUDA PyTorch (skip PyPI default torch wheel) ---
+# --- builder: install deps with CUDA PyTorch from the cu121 index ---
 FROM ubuntu:22.04 AS builder
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -8,6 +8,7 @@ RUN apt-get update \
         curl \
         ca-certificates \
         libsndfile1 \
+        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
@@ -15,16 +16,29 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 WORKDIR /app
 
 COPY pyproject.toml README.md ./
+COPY docker/pyproject.gpu.patch.toml /tmp/pytorch.patch
 COPY harmony ./harmony
+
+RUN cat /tmp/pytorch.patch >> pyproject.toml
 
 ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 
 RUN uv python install 3.12 \
-    && uv sync --python 3.12 --extra db --extra embed --extra api-minimal --no-dev \
-        --no-install-package torch --no-install-package torchaudio \
-    && uv pip install --reinstall torch torchaudio \
+    && uv venv --python 3.12 \
+    && uv pip install torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cu121 \
+    && uv sync --python 3.12 --extra db --extra embed --extra api-minimal --no-dev \
+        --no-install-package torch --no-install-package torchaudio --no-install-package torchvision \
+    && uv pip install --reinstall \
+        torch torchaudio torchvision \
+        --index-url https://download.pytorch.org/whl/cu121 \
+    && /app/.venv/bin/python -c "\
+import torch, torchaudio, torchvision; \
+import torchvision.transforms; \
+from muq import MuQMuLan; \
+assert torch.backends.cuda.is_built(); \
+print('pytorch', torch.__version__, 'torchvision', torchvision.__version__)" \
     && find /app/.venv -type d -name __pycache__ -exec rm -rf {} + \
     && find /app/.venv -type d -name tests -exec rm -rf {} + 2>/dev/null || true \
     && rm -rf /root/.cache/uv
