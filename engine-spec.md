@@ -5,6 +5,8 @@ A library indexing and vector search engine powered by **MuQ-MuLan**. It turns a
 **In scope:** ingest, embed, persist, index, search.  
 **Out of scope:** playlist sequencing, energy curves, graph walks, M3U export, pushing playlists to media servers.
 
+**Deployment model:** fully self-hosted. A single `data_dir` on disk — no external database server, no cloud dependency. One process (CLI, library, or API server) owns the store.
+
 ---
 
 ## 1. Purpose
@@ -25,6 +27,9 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 4. **Model-agnostic interface.** MuQ-MuLan is the default embedder, but the engine talks in terms of `Embedder`, not a specific checkpoint.
 5. **Retrieval, not curation.** Return ranked candidates with scores and metadata. Ordering 30 songs into a journey is someone else's job.
 6. **Three surfaces, one core.** The same logic is exposed as a Python library, a CLI, and an HTTP API.
+7. **Self-hosted by default.** No managed services required. Metadata, vectors, and indexes live in a portable `data_dir` you own.
+8. **Content is identity, path is location.** Tracks are keyed by audio content, not filesystem path. Reorganizing folders must not trigger re-embedding.
+9. **Libraries change continuously.** Adds, deletes, moves, tag edits, and duplicate files are normal operations — not exceptional rebuilds.
 
 ---
 
@@ -33,7 +38,7 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
 │   Sources   │ ──▶ │  Ingestion   │ ──▶ │  Embedding  │ ──▶ │   Storage    │
-│ local/API   │     │ decode/chunk │     │  MuQ-MuLan  │     │ sqlite/parquet│
+│ local/API   │     │ decode/chunk │     │  MuQ-MuLan  │     │ turso + files │
 └─────────────┘     └──────────────┘     └─────────────┘     └──────┬───────┘
                                                                     │
                                                                     ▼
@@ -50,10 +55,25 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 | **Sources** | Discover tracks from filesystem globs, Jellyfin, Subsonic |
 | **Ingestion** | Decode, mono mix (optional), resample to 24 kHz, chunk |
 | **Embedding** | Audio → vector; text → vector; track pooling from chunks |
-| **Storage** | Metadata DB, embedding files, index manifests |
+| **Storage** | [Turso](https://github.com/tursodatabase/turso) metadata DB, embedding files, index manifests |
 | **Index** | ANN indexes at chunk and track granularity |
 | **Retrieval** | Query parsing, search, aggregation, filtering, MMR |
 | **Surfaces** | `harmony` CLI, REST API, Python `harmony` package |
+
+### Self-hosting stack
+
+Everything runs in-process on the user's machine:
+
+| Component | Choice | Why |
+|-----------|--------|-----|
+| Metadata store | **Turso** (`pyturso`) | In-process, SQLite-compatible, Rust core — no separate DB daemon |
+| Vector ANN | **FAISS** | Fast approximate search at 10k–100k+ scale; mmap-friendly |
+| Embedding files | NumPy memmap / Parquet | Large sequential blobs; keep out of the SQL row store |
+| API server | FastAPI (optional) | Thin wrapper; same `Engine` as CLI/library |
+
+Turso holds structured, queryable state (tracks, paths, jobs, index manifests). FAISS holds the dense vector index. This split keeps metadata queries fast and vector search scalable without operating two services.
+
+> **Note:** Turso has experimental in-DB vector support; vector *indexing* is on its roadmap. Harmony uses FAISS for ANN today. If Turso vector indexing matures, the `IndexBackend` interface allows swapping or combining backends without changing the public API.
 
 ---
 
@@ -62,10 +82,11 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 ### 4.1 Track
 
 ```yaml
-track_id: string          # stable UUID, survives path moves if keyed by content hash
+track_id: string          # UUIDv5 derived from content_hash — stable across path moves
+content_hash: string      # SHA-256 of file bytes (primary identity)
+status: enum              # active | missing | removed | failed
 source_id: string         # upstream ID (Jellyfin GUID, Subsonic id, or "local")
-path: string              # absolute path or virtual URI
-content_hash: string      # SHA-256 of file bytes (or size+mtime fallback)
+primary_path: string      # current canonical path (see §5.5 track_locations)
 duration_ms: int
 title: string
 artist: string
@@ -77,7 +98,34 @@ disc_number: int | null
 track_number: int | null
 extra: object             # passthrough tags from source adapter
 indexed_at: datetime
+last_seen_at: datetime    # last time file appeared in a source scan
 embedding_version: string # see §4.4
+```
+
+### 4.1.1 Track location
+
+Paths are mutable. A track may temporarily exist at multiple paths (duplicates, moves in progress).
+
+```yaml
+location_id: string
+track_id: string
+path: string              # absolute path or virtual URI
+source: string            # local | jellyfin | subsonic
+is_primary: bool          # one primary path per track per source
+first_seen_at: datetime
+last_seen_at: datetime
+```
+
+### 4.1.2 Path history
+
+Optional audit trail for debugging reorganizations:
+
+```yaml
+track_id: string
+old_path: string
+new_path: string
+changed_at: datetime
+reason: "moved" | "renamed" | "primary_changed"
 ```
 
 ### 4.2 Chunk
@@ -169,20 +217,106 @@ Pipeline:
 resolve → decode → resample → chunk → queue for embedding
 ```
 
-### 5.3 Incremental indexing
+### 5.3 Library sync (incremental indexing)
 
-On each `index` run:
+Each `index` run is a **reconciliation** between what the source reports now and what Turso stores. The goal: embed the minimum, never lose searchability during transitions, and survive messy real-world libraries.
 
-1. Scan source for current track set.
-2. Compare `content_hash` + `embedding_version` against stored records.
-3. **New** → full pipeline.
-4. **Changed** → re-embed; invalidate old chunks.
-5. **Unchanged** → skip.
-6. **Missing from source** → mark `status = removed` (soft delete; vectors kept until `purge`).
+#### Reconciliation algorithm
 
-Optional filesystem watcher mode (`index --watch`) for local sources.
+```
+scan_result = source.scan()          # (path, content_hash, metadata) per file
+known       = db.get_active_tracks()
 
-### 5.4 Index job states
+for each (path, hash, meta) in scan_result:
+    match by content_hash first, then by path (for in-place edits)
+
+apply transitions (see §5.4)
+produce SyncReport
+```
+
+#### What triggers work
+
+| Event | Detection | Action | Re-embed? | FAISS update? |
+|-------|-----------|--------|-----------|---------------|
+| **New file** | `content_hash` unknown | Create track, embed | Yes | Add vectors |
+| **File edited in place** | Same path, `content_hash` changed | New `track_id`; old track → `removed` | Yes (new) | Remove old, add new |
+| **File moved / renamed** | Known `content_hash`, new path | Update `track_locations`; log path history | No | No |
+| **Duplicate copy** | Known `content_hash`, extra path | Add alias location; one embedding shared | No | No |
+| **Unchanged file** | Same hash + current `embedding_version` | Touch `last_seen_at` only | No | No |
+| **Tag/metadata change** | Same hash, different tags | Update metadata row | No | No |
+| **File absent** | Known path not in scan | `status → missing` (see grace period) | No | No |
+| **Confirmed deletion** | Missing past grace period | `status → removed`; tombstone in FAISS | No | Mark removed |
+| **Model/chunk config change** | `embedding_version` mismatch | Queue re-embed | Yes | Rebuild affected |
+
+Embedding is expensive; everything else is a cheap metadata update in Turso.
+
+### 5.4 Change handling details
+
+#### Moves and reorganization
+
+Users frequently rename albums, reshuffle folders, or switch drive mount points. The engine must treat these as **location updates**, not new music:
+
+1. Scan computes `content_hash` for every discovered file.
+2. Hash matches an existing `track_id` → upsert `track_locations` row for the new path.
+3. Set `is_primary` on the path seen in the current scan; demote stale paths.
+4. Return `track_id` and embeddings unchanged. Search and `search_by_track` keep working.
+
+#### Duplicates
+
+Same audio at `/music/Artist/A.flac` and `/music/Backup/A.flac`:
+
+- One `track_id`, one set of embeddings.
+- Multiple `track_locations` rows.
+- `primary_path` follows config (`first_seen`, `shortest_path`, or explicit).
+
+#### Grace period for missing files
+
+Files may vanish temporarily (external drive unmounted, NAS offline, sync in progress). Don't immediately purge embeddings.
+
+| Phase | `status` | Searchable? | Duration |
+|-------|----------|-------------|----------|
+| Seen in last scan | `active` | Yes | — |
+| Not seen once | `missing` | Yes | configurable, default 7 days |
+| Missing past grace | `removed` | No (tombstoned) | until `purge` |
+
+`missing` tracks remain in the FAISS index so search results don't flicker during brief outages. `removed` tracks are excluded from search; vectors stay on disk until explicit `purge`.
+
+#### In-place content replacement
+
+Same path, different audio (user overwrote the file):
+
+- Old `track_id` (old hash) → `removed`.
+- New `track_id` (new hash) → embed from scratch.
+- Path history records the transition.
+
+#### Sync report
+
+Every reconciliation returns a summary (CLI, API, logs):
+
+```yaml
+SyncReport:
+  added: int
+  updated_metadata: int
+  moved: int              # path changes, no re-embed
+  duplicates_found: int
+  missing: int            # entered grace period
+  removed: int            # past grace period
+  reembedded: int
+  failed: int
+  skipped: int            # unchanged
+  duration_ms: int
+```
+
+### 5.5 Filesystem watch mode
+
+`harmony index --watch` for local sources:
+
+- Use `watchdog` (or platform notify API) with **debounce** (default 5s) to coalesce burst events (e.g. `mv album/ /new/album/`).
+- Batch changes into a single reconciliation pass.
+- Never embed on every individual notify — wait for quiescence.
+- Search remains available during background reconciliation (see §13.2).
+
+### 5.6 Index job states
 
 ```
 pending → decoding → embedding → indexing → ready
@@ -244,7 +378,7 @@ Text embeddings are ephemeral unless explicitly cached (see §8.5).
 ```
 {data_dir}/
 ├── config.yaml              # engine config snapshot
-├── metadata.db              # SQLite: tracks, chunks, jobs, indexes
+├── harmony.db               # Turso database (SQLite-compatible single file)
 ├── embeddings/
 │   └── {embedding_version}/
 │       ├── chunks/{track_id}.parquet   # or .npy per chunk batch
@@ -257,15 +391,71 @@ Text embeddings are ephemeral unless explicitly cached (see §8.5).
 └── logs/
 ```
 
-### SQLite tables (minimum)
+The entire `data_dir` is **portable**: copy, back up, or rsync it to another machine. No environment-specific connection strings.
 
-- `tracks` — metadata + indexing state
+### Turso (metadata store)
+
+Harmony uses [Turso](https://github.com/tursodatabase/turso) via **`pyturso`** — an in-process, SQLite-compatible database written in Rust. No separate database server process.
+
+```python
+import turso
+
+con = turso.connect(f"{data_dir}/harmony.db")
+```
+
+**Why Turso over plain SQLite**
+
+| Property | Benefit for Harmony |
+|----------|---------------------|
+| In-process | Zero ops — ideal for self-hosted CLI and single-node API |
+| SQLite-compatible | Standard SQL, single-file DB, familiar tooling (`turso` CLI) |
+| Rust core | Fast metadata filtering (artist, year, path) during search pre-filter |
+| `BEGIN CONCURRENT` | Better write throughput when reconciliation batches many path updates |
+| Portable file format | `harmony.db` travels with `data_dir` |
+
+**Division of labour**
+
+| Store | Holds | Does not hold |
+|-------|-------|---------------|
+| Turso (`harmony.db`) | Tracks, paths, chunks, jobs, tombstones, sync state | Raw embedding vectors |
+| Embedding files | `float32` vectors per chunk/track | — |
+| FAISS indexes | ANN structure for fast similarity search | Metadata |
+
+### Turso schema (minimum)
+
+- `tracks` — metadata, `content_hash`, `status`, `embedding_version`
+- `track_locations` — path ↔ `track_id` mapping (supports duplicates and moves)
+- `path_history` — optional audit log for reorganization debugging
 - `chunks` — chunk boundaries + embedding file pointers
 - `embedding_jobs` — resumable job queue
-- `indexes` — manifest rows
+- `indexes` — FAISS manifest rows
+- `sync_runs` — history of `SyncReport` summaries
 - `query_cache` — optional text → vector cache
 
+Indexes on Turso tables:
+
+```sql
+CREATE INDEX idx_tracks_content_hash ON tracks(content_hash);
+CREATE INDEX idx_tracks_status ON tracks(status);
+CREATE INDEX idx_locations_path ON track_locations(path);
+CREATE INDEX idx_locations_track ON track_locations(track_id);
+CREATE INDEX idx_chunks_track ON chunks(track_id);
+```
+
 Embeddings on disk as **Parquet** (column: `vector` as fixed-size list) or **NumPy** memmap for simplicity in v1.
+
+### FAISS incremental updates
+
+When tracks are added or removed, the ANN index must stay consistent:
+
+| Operation | FAISS action |
+|-----------|--------------|
+| New track embedded | `add()` vectors; persist index |
+| Track `removed` | Mark ID in Turso `index_tombstones`; filter at query time (no full rebuild) |
+| Bulk purge | `remove_ids()` or periodic compact rebuild (`harmony index --rebuild-index`) |
+| Path-only move | No FAISS change |
+
+Periodic compaction (weekly or when `removed` > 10% of index) reclaims tombstoned slots without re-embedding.
 
 ---
 
@@ -485,13 +675,14 @@ Base path: `/v1`. JSON in/out. OpenAPI spec generated from route definitions.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/index` | Start indexing job `{ source, paths?, full_rescan? }` |
-| `GET` | `/index/{job_id}` | Job status + progress |
+| `POST` | `/index` | Start sync/reconcile job `{ source, paths?, full_rescan? }` |
+| `GET` | `/index/{job_id}` | Job status + progress + latest `SyncReport` |
 | `DELETE` | `/index/{job_id}` | Cancel running job |
-| `GET` | `/library/stats` | Track count, chunk count, index health, embedding version |
+| `GET` | `/library/stats` | Track count by status, chunk count, index health, embedding version |
 | `GET` | `/library/tracks` | Paginated track list + metadata |
-| `GET` | `/library/tracks/{track_id}` | Single track + chunk map |
-| `POST` | `/library/purge` | Remove soft-deleted tracks and orphan vectors |
+| `GET` | `/library/tracks/{track_id}` | Single track + chunk map + all known paths |
+| `GET` | `/library/sync` | History of sync runs and reports |
+| `POST` | `/library/purge` | Remove `removed` tracks and orphan vectors from disk |
 
 ### 9.2 Search
 
@@ -565,7 +756,8 @@ Binary name: `harmony`
 ```
 harmony init [--data-dir PATH]
 harmony index <source> [paths...] [--full] [--watch]
-harmony status
+harmony status                              # library stats + last sync report
+harmony sync-history [--limit 10]           # past reconciliation reports
 harmony search text <query> [--k 50] [--json]
 harmony search track <track_id> [--chunk <chunk_id>] [--k 50]
 harmony search blend --text "ambient:0.6" --track <id>:0.4
@@ -573,6 +765,7 @@ harmony serve [--host] [--port] [--data-dir]
 harmony purge [--removed] [--orphans]
 ```
 
+`harmony index` prints a `SyncReport` on completion (added, moved, reembedded, etc.).  
 `harmony search` prints human-readable tables by default; `--json` for scripting.
 
 ---
@@ -584,8 +777,9 @@ from harmony import Engine
 
 engine = Engine(data_dir="~/.harmony")
 
-# One-time setup
-engine.index(source="local", paths=["/music"])
+# Index or re-sync (adds, moves, removes — moves don't re-embed)
+report = engine.index(source="local", paths=["/music"])
+print(f"Moved {report.moved}, added {report.added}, re-embedded {report.reembedded}")
 
 # Search
 results = engine.search_by_text("melancholic piano", k=30)
@@ -605,6 +799,10 @@ The library is the source of truth. CLI and HTTP are thin wrappers.
 ```yaml
 data_dir: ~/.harmony
 
+database:
+  path: harmony.db      # Turso/SQLite file inside data_dir
+  # no host, port, or credentials — fully local
+
 embedding:
   model: muq-mulan
   device: auto          # cuda | cpu | auto
@@ -616,11 +814,18 @@ audio:
   chunk_seconds: 10
   overlap_seconds: 2
 
+sync:
+  missing_grace_days: 7       # before a missing file becomes removed
+  watch_debounce_seconds: 5   # coalesce filesystem events
+  hash_chunk_size_mb: 4       # streaming SHA-256 for large FLACs
+  primary_path_policy: scan   # scan | shortest | first_seen
+
 index:
   backend: faiss
   metric: cosine
   build_track_index: true
   build_chunk_index: true
+  compact_threshold: 0.10     # rebuild FAISS when >10% tombstoned
 
 retrieval:
   default_k: 50
@@ -639,30 +844,46 @@ sources:
 
 ## 13. Operational concerns
 
-### 13.1 Performance targets (informative)
+### 13.1 Self-hosting requirements
 
-| Corpus | Index build | Text search p95 |
-|--------|-------------|-----------------|
-| 10k tracks | < 2h initial embed (GPU) | < 100ms |
-| 100k tracks | incremental only on changes | < 200ms |
+| Requirement | Detail |
+|-------------|--------|
+| Disk | `data_dir` size ≈ embeddings (~1–4 KB/track vector) + FAISS index + `harmony.db` (small) |
+| RAM | FAISS index mmap'd; GPU RAM for embedding only |
+| Processes | One Python process; Turso in-process (no DB daemon) |
+| Network | None required after model weights are cached |
+| Backup | Copy `data_dir`; `harmony.db` is a single consistent SQLite-format file |
 
-Brute-force cosine is acceptable for MVP (<2k tracks) before FAISS kicks in.
+A minimal deployment is `pip install harmony` → `harmony init` → `harmony index /music` → `harmony serve`.
 
-### 13.2 Concurrency
+### 13.2 Performance targets (informative)
 
-- Indexing: single-writer (one embed job at a time per data dir).
-- Search: multi-reader (read-only index mmap / FAISS concurrent search).
-- API: embed and search can run concurrently if GPU memory allows batching.
+| Corpus | Initial embed | Incremental sync (moves only) | Text search p95 |
+|--------|---------------|-------------------------------|-----------------|
+| 10k tracks | < 2h (GPU) | < 30s (hash + Turso writes) | < 100ms |
+| 100k tracks | background job | < 5min (hash-bound) | < 200ms |
 
-### 13.3 Failure handling
+Hashing dominates move-only syncs; embedding dominates adds. Brute-force cosine is acceptable for MVP (<2k tracks) before FAISS kicks in.
 
-- Per-track failures do not abort the job; recorded in `embedding_jobs` with error message.
-- Corrupt index → detect via manifest checksum; offer `harmony index --rebuild-index` without re-embedding.
+### 13.3 Concurrency
 
-### 13.4 Versioning & migrations
+- **Indexing:** single-writer per `data_dir` (one embed job at a time). Turso `BEGIN CONCURRENT` allows batched path/metadata writes during reconciliation without blocking readers.
+- **Search during sync:** always available. Newly embedded tracks appear after their FAISS `add()` completes; removed tracks are filtered via tombstones immediately.
+- **FAISS:** mmap'd index; concurrent read queries from API threads.
+- **API:** embed and search can overlap if GPU memory allows.
 
-- `embedding_version` change → background re-embed job.
-- Schema migrations via SQLite pragmas + version table.
+### 13.4 Failure handling
+
+- Per-track failures do not abort the job; recorded in `embedding_jobs` with error message. `status = failed` with retry on next sync.
+- Unreadable file mid-scan → skip, log, continue.
+- Corrupt FAISS index → detect via manifest checksum; `harmony index --rebuild-index` rebuilds ANN from stored vectors without re-embedding.
+- Corrupt `harmony.db` → restore from backup; embeddings and FAISS files are independent and reusable.
+
+### 13.5 Versioning & migrations
+
+- `embedding_version` change → background re-embed job for affected tracks.
+- Schema migrations via Turso SQL + `schema_version` table (standard SQLite migration pattern).
+- `content_hash` algorithm change → one-time background re-hash (no re-embed unless hash differs).
 - Breaking API changes bump `/v2`.
 
 ---
@@ -689,18 +910,20 @@ The engine **does not**:
 - [ ] Audio load, resample, chunk
 - [ ] MuQ-MuLan embed (track-level only)
 - [ ] Brute-force cosine search
-- [ ] SQLite metadata + numpy embedding files
+- [ ] Turso (`pyturso`) metadata + numpy embedding files
+- [ ] Content-hash identity + path moves without re-embed
 - [ ] CLI: `index`, `search text`, `status`
 - [ ] Python library with `search_by_text`, `search_by_track`
 
 ### Phase 1 — Production retrieval
 
 - [ ] Chunk-level embeddings + storage
-- [ ] FAISS chunk + track indexes
+- [ ] FAISS chunk + track indexes + tombstone filtering
 - [ ] Chunk → track aggregation (`max`)
 - [ ] `search_by_blend`, `search_by_audio`
-- [ ] Filters (artist, year, duration)
-- [ ] Incremental indexing by content hash
+- [ ] Filters (artist, year, duration) via Turso pre-filter
+- [ ] Full library sync: adds, removes, moves, duplicates, `SyncReport`
+- [ ] Missing-file grace period
 - [ ] HTTP API + OpenAPI
 
 ### Phase 2 — Scale & integrations
@@ -708,9 +931,10 @@ The engine **does not**:
 - [ ] Jellyfin + Subsonic source adapters
 - [ ] `similar_chunks` mode
 - [ ] MMR + `max_per_artist`
-- [ ] Filesystem watch mode
+- [ ] Filesystem watch mode with debounce
 - [ ] `search_by_vector` + batch text embed
-- [ ] Index rebuild without re-embed
+- [ ] FAISS compact rebuild without re-embed
+- [ ] `path_history` audit log
 
 ---
 
@@ -723,6 +947,8 @@ A playlist generator, radio mode, or "vibe DJ" app built on Harmony Engine can:
 3. Use `search_by_track` for "more like this" without re-implementing embeddings.
 4. Fetch raw vectors for custom sequencing (graph walk, energy curves) in its own repo.
 5. Apply its own rules on top of `ScoredItem` lists — the engine never needs to know.
+6. Rely on **stable `track_id`s** across library reorganizations — playlist apps store IDs, not paths.
+7. Run `engine.index()` on a schedule or watch; handle `SyncReport` to show "12 new tracks indexed" in their UI.
 
 ---
 
@@ -730,10 +956,13 @@ A playlist generator, radio mode, or "vibe DJ" app built on Harmony Engine can:
 
 | Question | Lean |
 |----------|------|
-| Track ID stability | Prefer content hash; fall back to path + source_id |
+| Track ID derivation | `UUIDv5(namespace, content_hash)` — deterministic, survives moves |
+| Hash without full read | Stream SHA-256; optional size+mtime fast-path to skip re-hash of unchanged files |
 | Parquet vs memmap npy for v1 | npy per track (simpler); migrate to Parquet at 50k+ chunks |
 | GPU requirement | CPU works; document GPU as recommended for indexing |
-| Include path in search results? | Yes for local; URI for API sources |
+| Include path in search results? | Return `primary_path`; include all `track_locations` on detail endpoint |
+| Turso beta status | Acceptable for self-hosted use with backup guidance; fall back to `sqlite3` stdlib if `pyturso` unavailable |
+| FAISS vs Turso vectors | FAISS for ANN now; revisit when Turso vector indexing ships |
 | License for model weights | Document MuQ-MuLan terms in README |
 
 ---
@@ -759,8 +988,10 @@ harmony/
 │   │   ├── base.py
 │   │   └── muq_mulan.py
 │   ├── storage/
+│   │   ├── db.py            # Turso connection + migrations
 │   │   ├── metadata.py
-│   │   └── vectors.py
+│   │   ├── vectors.py
+│   │   └── sync.py          # reconciliation + SyncReport
 │   ├── index/
 │   │   ├── base.py
 │   │   └── faiss_index.py
