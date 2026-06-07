@@ -14,7 +14,7 @@ from harmony.audio.loader import load_audio
 from harmony.audio.resample import resample
 from harmony.config import Config
 from harmony.embedding.base import Embedder
-from harmony.embedding.pooling import mean_pool
+from harmony.embedding.pooling import pool_chunks
 from harmony.models import Track, TrackStatus, utcnow
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
@@ -65,7 +65,7 @@ class TrackEmbeddingPipeline:
         outer = session_factory() if session_factory else nullcontext()
         with outer:
             chunk_embeddings = self._embed_chunks_batched(chunk_waveforms, sample_rate)
-        track_vector = mean_pool(chunk_embeddings)
+        track_vector = pool_chunks(chunk_embeddings, self._pooling_strategy())
 
         version = self.config.embedding_version()
         self.vectors.save_track_vector(track.track_id, track_vector, version)
@@ -171,3 +171,6 @@ class TrackEmbeddingPipeline:
             parts.append(part)
 
         return np.vstack(parts)
+
+    def _pooling_strategy(self) -> str:
+        return getattr(self.embedder, "pooling_strategy", "mean")

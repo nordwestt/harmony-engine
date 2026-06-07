@@ -12,6 +12,7 @@ from harmony.embedding.keep_alive import parse_keep_alive
 
 class FakeEmbedder:
     name = "fake"
+    pooling_strategy = "mean"
 
     is_loaded = False
     is_loading = False

@@ -14,7 +14,7 @@ from harmony.audio.resample import resample
 from harmony.config import Config
 from harmony.embedding.base import Embedder
 from harmony.embedding.factory import create_embedder
-from harmony.embedding.pooling import mean_pool
+from harmony.embedding.pooling import pool_chunks
 
 
 @dataclass(frozen=True)
@@ -106,7 +106,8 @@ def benchmark_encode(
         )
     embed_ms = (time.perf_counter() - embed_start) * 1000
 
-    track_vector = mean_pool(chunk_embeddings)
+    strategy = getattr(embedder, "pooling_strategy", "mean")
+    track_vector = pool_chunks(chunk_embeddings, strategy)
     total_ms = (time.perf_counter() - total_start) * 1000
 
     if owns_embedder and hasattr(embedder, "unload"):

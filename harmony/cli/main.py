@@ -261,14 +261,34 @@ def bench() -> None:
 
 @bench.command("encode")
 @click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--model",
+    default=None,
+    help="Embedding backend (e.g. muq-mulan, clap-music); overrides config",
+)
+@click.option(
+    "--checkpoint",
+    default=None,
+    help="Model checkpoint; overrides config embedding.checkpoint",
+)
 @click.option("--json", "as_json", is_flag=True, help="Output JSON")
 @click.pass_context
-def bench_encode(ctx: click.Context, path: Path, as_json: bool) -> None:
+def bench_encode(
+    ctx: click.Context,
+    path: Path,
+    model: str | None,
+    checkpoint: str | None,
+    as_json: bool,
+) -> None:
     """Time encoding a single audio file (load, resample, chunk, embed)."""
     from harmony.config import Config
     from harmony.embedding.benchmark import benchmark_encode
 
     config = Config.load(ctx.obj["data_dir"])
+    if model is not None:
+        config.embedding.model = model
+    if checkpoint is not None:
+        config.embedding.checkpoint = checkpoint
     try:
         result = benchmark_encode(path, config)
     except (ValueError, ImportError, OSError) as e:

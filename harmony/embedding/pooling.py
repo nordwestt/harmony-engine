@@ -25,3 +25,20 @@ def first_pool(chunk_embeddings: np.ndarray) -> np.ndarray:
     if chunk_embeddings.ndim == 1:
         return chunk_embeddings
     return chunk_embeddings[0]
+
+
+_POOLERS = {
+    "mean": mean_pool,
+    "max_norm": max_norm_pool,
+    "first": first_pool,
+}
+
+
+def pool_chunks(chunk_embeddings: np.ndarray, strategy: str) -> np.ndarray:
+    """Pool chunk embeddings using the named strategy."""
+    try:
+        pooler = _POOLERS[strategy]
+    except KeyError as e:
+        supported = ", ".join(sorted(_POOLERS))
+        raise ValueError(f"Unknown pooling strategy {strategy!r}. Supported: {supported}") from e
+    return pooler(chunk_embeddings)
