@@ -4,15 +4,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-python -m venv .venv
-source .venv/bin/activate
+uv sync --extra db --group dev
 
-pip install -U pip
-pip install -e ".[db,dev]"
-
-harmony init
-harmony status
+uv run harmony init
+uv run harmony status
 
 echo ""
-echo "Done. Run tests with: pytest"
-echo "Index music with:    harmony index /path/to/music"
+echo "Done. Run tests with:       uv run pytest"
+echo "Index music with:          uv run harmony index /path/to/music"

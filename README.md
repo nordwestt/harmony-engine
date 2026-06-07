@@ -12,7 +12,7 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 - Project structure, config, CLI
 - Turso/SQLite metadata store with schema migrations
-- Local filesystem scan + content-hash identity
+- Filesystem scan + content-hash identity
 - Library sync (adds, moves, missing/removal grace period)
 - Brute-force index stub
 
@@ -20,20 +20,37 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 ## Quick start
 
+Uses [uv](https://docs.astral.sh/uv/).
+
 ```bash
-# Option A: bootstrap script
-bash scripts/bootstrap.sh
+uv sync --extra db --group dev
 
-# Option B: manual
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[db,dev]"
+uv run harmony init          # creates ~/.harmony
+uv run harmony index ~/Music # scan your library
+uv run harmony status
 
-harmony init
-harmony index /path/to/music
-harmony status
-pytest
+uv run pytest
 ```
+
+Or use the bootstrap script:
+
+```bash
+bash scripts/bootstrap.sh
+```
+
+## Data directory
+
+By default Harmony uses `~/.harmony`:
+
+```
+~/.harmony/
+├── config.yaml    # settings snapshot
+├── harmony.db     # metadata (Turso / SQLite-compatible)
+├── embeddings/    # vector files (once embedding is wired)
+└── indexes/       # FAISS indexes
+```
+
+Override with `--data-dir` on CLI commands or `HARMONY_DATA_DIR` in the environment.
 
 ## Project layout
 
@@ -50,16 +67,6 @@ harmony/           # Python package
 ├── api/           # FastAPI server
 └── cli/           # `harmony` command
 ```
-
-## Self-hosting
-
-Everything lives in a single `data_dir`:
-
-- `harmony.db` — metadata (Turso / SQLite-compatible)
-- `embeddings/` — vector files
-- `indexes/` — FAISS indexes
-
-No external database server required.
 
 ## License
 

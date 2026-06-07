@@ -51,6 +51,14 @@ harmony = "harmony.cli.main:cli"
 Repository = "https://github.com/harmony-search/harmony-engine"
 Documentation = "https://github.com/harmony-search/harmony-engine/blob/main/engine-spec.md"
 
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+    "mypy>=1.8",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["harmony"]
 
