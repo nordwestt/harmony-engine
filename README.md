@@ -42,7 +42,7 @@ harmony/           # Python package
 ├── engine.py      # Engine facade
 ├── config.py      # Configuration
 ├── storage/       # Turso DB, vectors, sync
-├── sources/       # filesystem scanner
+├── scanner/       # filesystem discovery
 ├── audio/         # decode, resample, chunk
 ├── embedding/     # MuQ-MuLan wrapper
 ├── index/         # FAISS / brute-force ANN

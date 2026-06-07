@@ -14,9 +14,9 @@ def test_config_defaults(tmp_path: Path) -> None:
 
 def test_config_roundtrip(tmp_path: Path) -> None:
     cfg = Config(data_dir=tmp_path)
-    cfg.sources.local.paths = ["/music"]
+    cfg.filesystem.paths = ["/music"]
     cfg.save()
 
     loaded = Config.load(tmp_path)
-    assert loaded.sources.local.paths == ["/music"]
+    assert loaded.filesystem.paths == ["/music"]
     assert loaded.audio.chunk_seconds == 10

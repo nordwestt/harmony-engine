@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from harmony.sources.filesystem import FilesystemScanner, hash_file
+from harmony.scanner.filesystem import FilesystemScanner, hash_file
 
 
 def test_hash_file(tmp_path: Path) -> None:

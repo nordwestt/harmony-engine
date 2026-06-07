@@ -10,7 +10,7 @@ from harmony.index.brute import BruteForceIndex
 from harmony.models import SearchResult, SyncReport
 from harmony.retrieval.filters import Filters
 from harmony.retrieval.search import SearchEngine
-from harmony.sources.filesystem import FilesystemScanner
+from harmony.scanner.filesystem import FilesystemScanner
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.sync import LibrarySync
 from harmony.storage.vectors import VectorStore
@@ -63,11 +63,11 @@ class Engine:
 
         Embedding is not yet wired; this pass discovers files and updates Turso.
         """
-        scan_paths = paths or self.config.sources.local.paths
+        scan_paths = paths or self.config.filesystem.paths
         if not scan_paths:
-            raise ValueError("No paths provided. Pass paths= or configure sources.local.paths")
+            raise ValueError("No paths provided. Pass paths= or configure filesystem.paths")
 
-        scanner = FilesystemScanner(scan_paths, config=self.config.sources.local)
+        scanner = FilesystemScanner(scan_paths, config=self.config.filesystem)
         return self.sync.reconcile(scanner)
 
     def stats(self) -> dict[str, int | str]:

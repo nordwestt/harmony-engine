@@ -58,17 +58,12 @@ class RetrievalConfig:
 
 
 @dataclass
-class LocalSourceConfig:
+class FilesystemConfig:
     paths: list[str] = field(default_factory=list)
     extensions: list[str] = field(
         default_factory=lambda: [".flac", ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".opus"]
     )
     follow_symlinks: bool = False
-
-
-@dataclass
-class SourcesConfig:
-    local: LocalSourceConfig = field(default_factory=LocalSourceConfig)
 
 
 @dataclass
@@ -80,7 +75,7 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     index: IndexConfig = field(default_factory=IndexConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
-    sources: SourcesConfig = field(default_factory=SourcesConfig)
+    filesystem: FilesystemConfig = field(default_factory=FilesystemConfig)
 
     @property
     def db_path(self) -> Path:
@@ -124,8 +119,7 @@ class Config:
 
         config_path = data_dir / "config.yaml"
         if not config_path.exists():
-            cfg = cls(data_dir=data_dir)
-            return cfg
+            return cls(data_dir=data_dir)
 
         raw = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         return cls.from_dict(raw, data_dir=data_dir)
@@ -140,7 +134,7 @@ class Config:
             sync=_merge(SyncConfig, data.get("sync")),
             index=_merge(IndexConfig, data.get("index")),
             retrieval=_merge(RetrievalConfig, data.get("retrieval")),
-            sources=_sources_from_dict(data.get("sources", {})),
+            filesystem=_merge(FilesystemConfig, data.get("filesystem")),
         )
 
 
@@ -148,11 +142,6 @@ def _merge(cls: type, data: dict[str, Any] | None):
     if not data:
         return cls()
     return cls(**{k: v for k, v in data.items() if k in cls.__dataclass_fields__})
-
-
-def _sources_from_dict(data: dict[str, Any]) -> SourcesConfig:
-    local_raw = data.get("local", {})
-    return SourcesConfig(local=_merge(LocalSourceConfig, local_raw))
 
 
 def _config_to_dict(config: Config) -> dict[str, Any]:

@@ -37,7 +37,7 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│   Sources   │ ──▶ │  Ingestion   │ ──▶ │  Embedding  │ ──▶ │   Storage    │
+│  Scanner    │ ──▶ │  Ingestion   │ ──▶ │  Embedding  │ ──▶ │   Storage    │
 │ filesystem  │     │ decode/chunk │     │  MuQ-MuLan  │     │ turso + files │
 └─────────────┘     └──────────────┘     └─────────────┘     └──────┬───────┘
                                                                     │
@@ -52,7 +52,7 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 
 | Layer | Responsibility |
 |-------|----------------|
-| **Sources** | Discover tracks from configured filesystem paths |
+| **Scanner** | Walk configured directories and discover audio files |
 | **Ingestion** | Decode, mono mix (optional), resample to 24 kHz, chunk |
 | **Embedding** | Audio → vector; text → vector; track pooling from chunks |
 | **Storage** | [Turso](https://github.com/tursodatabase/turso) metadata DB, embedding files, index manifests |
@@ -75,19 +75,9 @@ Turso holds structured, queryable state (tracks, paths, jobs, index manifests). 
 
 > **Note:** Turso has experimental in-DB vector support; vector *indexing* is on its roadmap. Harmony uses FAISS for ANN today. If Turso vector indexing matures, the `IndexBackend` interface allows swapping or combining backends without changing the public API.
 
-### Filesystem-only ingestion
+### Filesystem-only
 
-Harmony indexes music by reading files directly from disk. It does **not** integrate with media server APIs (Jellyfin, Subsonic, Plex, etc.).
-
-**Why:**
-
-1. **Embedding needs the bytes.** The pipeline must decode every file to audio. Filesystem access is direct disk I/O; API access means HTTP streaming or per-track downloads — slower, more fragile, and harder to resume.
-2. **Initial indexing is bulk work.** Hashing and embedding 10k+ tracks is already GPU/disk-bound. Adding network latency and rate limits on top helps nobody.
-3. **Libraries already live on disk.** Users running Jellyfin or similar still have files at `/music`, `/mnt/nas/...`, or a bind mount. Point Harmony at that path.
-4. **Simpler sync model.** Content-hash identity and move detection work naturally with paths. No GUID mapping, no upstream ID drift, no auth tokens to refresh.
-5. **Self-hosted means local-first.** The engine should not depend on another service being up to index or search.
-
-If your music is only reachable via API with no filesystem access, Harmony is not the right tool today.
+Harmony reads music directly from disk. Point it at a directory — `/music`, a NAS mount, an external drive — and it walks the tree, hashes files, and embeds them.
 
 ---
 
@@ -111,7 +101,7 @@ disc_number: int | null
 track_number: int | null
 extra: object             # passthrough tags from file metadata (future: mutagen)
 indexed_at: datetime
-last_seen_at: datetime    # last time file appeared in a source scan
+last_seen_at: datetime    # last time file appeared in a filesystem scan
 embedding_version: string # see §4.4
 ```
 
@@ -122,7 +112,7 @@ Paths are mutable. A track may temporarily exist at multiple paths (duplicates, 
 ```yaml
 location_id: string
 track_id: string
-path: string              # absolute path or virtual URI
+path: string              # absolute filesystem path
 is_primary: bool          # one primary path per track
 first_seen_at: datetime
 last_seen_at: datetime
@@ -192,7 +182,7 @@ path: string
 
 ### 5.1 Filesystem scanner
 
-Harmony discovers music by walking configured directories. One scanner, no provider plugins:
+Harmony discovers music by walking configured directories:
 
 ```python
 class FilesystemScanner(Protocol):
@@ -840,11 +830,10 @@ retrieval:
   default_granularity: track
   default_aggregation: max
 
-sources:
-  local:
-    paths: []               # e.g. ["/music", "/mnt/nas/audio"]
-    extensions: [".flac", ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".opus"]
-    follow_symlinks: false
+filesystem:
+  paths: []                 # e.g. ["/music", "/mnt/nas/audio"]
+  extensions: [".flac", ".mp3", ".m4a", ".aac", ".ogg", ".wav", ".opus"]
+  follow_symlinks: false
 ```
 
 ---
@@ -903,7 +892,7 @@ The engine **does not**:
 - Apply energy curves, BPM matching, or harmonic mixing rules
 - Cluster candidates into sub-vibes for journey planning
 - Export M3U/PLS (downstream apps use `track_id` + metadata)
-- Integrate with media server APIs (Jellyfin, Subsonic, Plex, etc.)
+- Media server API integrations
 - Push playlists to external services
 - Train or fine-tune MuQ-MuLan
 - Stream audio to clients (only paths/IDs)
@@ -969,7 +958,6 @@ A playlist generator, radio mode, or "vibe DJ" app built on Harmony Engine can:
 | Parquet vs memmap npy for v1 | npy per track (simpler); migrate to Parquet at 50k+ chunks |
 | GPU requirement | CPU works; document GPU as recommended for indexing |
 | Include path in search results? | Return `primary_path`; include all `track_locations` on detail endpoint |
-| Media server APIs? | Out of scope — filesystem only; point at the library mount |
 | Turso beta status | Acceptable for self-hosted use with backup guidance; fall back to `sqlite3` stdlib if `pyturso` unavailable |
 | FAISS vs Turso vectors | FAISS for ANN now; revisit when Turso vector indexing ships |
 | License for model weights | Document MuQ-MuLan terms in README |
@@ -985,7 +973,7 @@ harmony/
 ├── harmony/
 │   ├── __init__.py          # Engine facade
 │   ├── config.py
-│   ├── sources/
+│   ├── scanner/
 │   │   ├── base.py
 │   │   └── filesystem.py    # directory walk + content hashing
 │   ├── audio/

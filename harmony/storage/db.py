@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 1
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 

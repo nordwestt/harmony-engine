@@ -4,7 +4,7 @@ from pathlib import Path
 
 from harmony.config import Config
 from harmony.engine import Engine
-from harmony.sources.filesystem import FilesystemScanner, hash_file
+from harmony.scanner.filesystem import FilesystemScanner, hash_file
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.sync import LibrarySync
 

@@ -78,7 +78,7 @@ class Chunk:
 
 @dataclass
 class ScannedFile:
-    """A file discovered during a source scan."""
+    """A file discovered during a filesystem scan."""
 
     path: str
     content_hash: str

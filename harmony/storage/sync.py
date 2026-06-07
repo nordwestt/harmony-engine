@@ -8,7 +8,7 @@ from datetime import datetime
 
 from harmony.config import Config
 from harmony.models import ScannedFile, SyncReport, utcnow
-from harmony.sources.base import FilesystemScannerProtocol
+from harmony.scanner.base import FilesystemScannerProtocol
 from harmony.storage.metadata import MetadataStore
 
 

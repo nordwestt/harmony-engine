@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Iterator
 
-from harmony.config import LocalSourceConfig
+from harmony.config import FilesystemConfig
 from harmony.models import ScannedFile
 
 
@@ -18,10 +18,10 @@ class FilesystemScanner:
         self,
         paths: list[str | Path],
         *,
-        config: LocalSourceConfig | None = None,
+        config: FilesystemConfig | None = None,
     ) -> None:
         self.paths = [Path(p).expanduser().resolve() for p in paths]
-        self.config = config or LocalSourceConfig()
+        self.config = config or FilesystemConfig()
         if self.paths:
             self.config.paths = [str(p) for p in self.paths]
 
