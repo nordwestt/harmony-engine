@@ -1,0 +1,34 @@
+# Git and IDE
+.git
+.gitignore
+.idea
+.vscode
+
+# Python
+.venv
+venv
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+dist
+build
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# Local dev data
+data
+*.db
+*.db-journal
+.env
+
+# Docs and plans (not needed in image)
+.cursor
+future-ideas.md
+engine-spec.md
+
+# Tests
+tests

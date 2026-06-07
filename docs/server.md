@@ -2,6 +2,8 @@
 
 `harmony serve` is the primary runtime for Harmony Engine. One long-lived process owns the embedding model, search index, and database. All indexing and search go through its HTTP API.
 
+For self-hosting with Docker, see [docker.md](docker.md).
+
 ## Quick start
 
 ```bash
