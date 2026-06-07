@@ -19,9 +19,40 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 ## Quick start
 
-Uses [uv](https://docs.astral.sh/uv/).
+### Docker (recommended for self-hosting)
 
-**Recommended:** run the server first; the CLI auto-detects it and indexes/search without restart.
+Published images: `ghcr.io/harmony-search/harmony-engine` — tags `latest` (CPU), `cuda` (GPU), `v0.1.0` / `v0.1.0-cuda` (semver).
+
+```bash
+git clone https://github.com/harmony-search/harmony-engine.git
+cd harmony-engine
+
+export MUSIC_PATH=~/music          # host path mounted read-only at /music
+docker compose up -d
+
+curl http://localhost:8000/health
+
+# Index (use container path /music, not the host path)
+curl -X POST http://localhost:8000/v1/index \
+  -H 'Content-Type: application/json' \
+  -d '{"paths": ["/music"]}'
+
+curl -X POST http://localhost:8000/v1/search/text \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "melancholic piano", "k": 10}'
+```
+
+GPU:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+```
+
+See [docs/docker.md](docs/docker.md) for volumes, env vars, upgrades, and troubleshooting.
+
+### From source (development)
+
+Uses [uv](https://docs.astral.sh/uv/). Run the server first; the CLI auto-detects it and indexes/search without restart.
 
 ```bash
 uv sync --extra db --extra embed --extra api --group dev
@@ -49,7 +80,7 @@ uv run harmony index ~/Music --no-embed
 
 ## Data directory
 
-Default: `~/.harmony`
+Default: `~/.harmony` (or `/data` in Docker)
 
 ```
 ~/.harmony/

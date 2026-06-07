@@ -1,0 +1,22 @@
+services:
+  harmony:
+    image: ${HARMONY_IMAGE:-ghcr.io/nordwestt/harmony-engine:latest}
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - harmony-data:/data
+      - ${MUSIC_PATH:-./music}:/music:ro
+    environment:
+      HARMONY_DATA_DIR: /data
+      HF_HOME: /data/huggingface
+      PORT: "8000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  harmony-data:
