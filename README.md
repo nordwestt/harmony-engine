@@ -1,6 +1,6 @@
 # Harmony Engine
 
-Self-hosted music library indexer and vector search engine powered by [MuQ-MuLan](https://github.com/muqmulan/muq-mulan).
+Self-hosted music library indexer and vector search engine powered by [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large).
 
 Harmony turns a local music collection into searchable embeddings and exposes retrieval primitives (text → tracks, track → similar tracks, etc.) that higher-level apps — playlist generators, DJ tools, recommendation UIs — build on.
 
@@ -8,66 +8,61 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 ## Status
 
-**Phase 0 scaffold** — working today:
+**Phase 0** — working today:
 
-- Project structure, config, CLI
-- Turso/SQLite metadata store with schema migrations
-- Filesystem scan + content-hash identity
-- Library sync (adds, moves, missing/removal grace period)
-- Brute-force index stub
+- Filesystem scan + content-hash identity + library sync
+- Audio load, resample (24 kHz), chunk, MuQ-MuLan embed
+- Track vectors persisted to disk + brute-force cosine search
+- `harmony search text "dreamy night drive"`
 
-**Not yet implemented:** MuQ-MuLan embedding, FAISS, audio pipeline, search.
+**Next:** FAISS, chunk-level index, metadata tag extraction (mutagen).
 
 ## Quick start
 
 Uses [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --extra db --group dev
+uv sync --extra db --extra embed --group dev
 
-uv run harmony init          # creates ~/.harmony
-uv run harmony index ~/Music # scan your library
+uv run harmony init
+uv run harmony index ~/Music     # scan + embed (downloads model on first run)
 uv run harmony status
-
-uv run pytest
+uv run harmony search text "melancholic piano" --k 10
 ```
 
-Or use the bootstrap script:
+Metadata-only rescan (no GPU work):
 
 ```bash
-bash scripts/bootstrap.sh
+uv run harmony index ~/Music --no-embed
 ```
 
 ## Data directory
 
-By default Harmony uses `~/.harmony`:
+Default: `~/.harmony`
 
 ```
 ~/.harmony/
-├── config.yaml    # settings snapshot
-├── harmony.db     # metadata (Turso / SQLite-compatible)
-├── embeddings/    # vector files (once embedding is wired)
-└── indexes/       # FAISS indexes
+├── config.yaml
+├── harmony.db
+├── embeddings/{version}/tracks/{track_id}.npy
+└── indexes/{version}/track.brute.{npy,json}
 ```
 
-Override with `--data-dir` on CLI commands or `HARMONY_DATA_DIR` in the environment.
+First embed run downloads **OpenMuQ/MuQ-MuLan-large** from Hugging Face (~700M params). GPU recommended; CPU works but is slower.
 
 ## Project layout
 
 ```
-harmony/           # Python package
-├── engine.py      # Engine facade
-├── config.py      # Configuration
-├── storage/       # Turso DB, vectors, sync
+harmony/
+├── engine.py
 ├── scanner/       # filesystem discovery
 ├── audio/         # decode, resample, chunk
-├── embedding/     # MuQ-MuLan wrapper
-├── index/         # FAISS / brute-force ANN
-├── retrieval/     # search, filters, aggregation
-├── api/           # FastAPI server
-└── cli/           # `harmony` command
+├── embedding/     # MuQ-MuLan + pipeline
+├── index/         # brute-force ANN + manager
+├── retrieval/     # search
+└── cli/
 ```
 
 ## License
 
-MIT
+MIT (engine). MuQ-MuLan weights are [CC-BY-NC 4.0](https://huggingface.co/OpenMuQ/MuQ-MuLan-large).

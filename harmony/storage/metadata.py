@@ -93,6 +93,80 @@ class MetadataStore:
         ).fetchall()
         return [self._row_to_track(r) for r in rows]
 
+    def list_tracks_pending_embedding(self) -> list[Track]:
+        version = self.config.embedding_version()
+        rows = self.conn.execute(
+            """
+            SELECT * FROM tracks
+            WHERE status IN ('active', 'failed')
+              AND (indexed_at IS NULL OR embedding_version != ?)
+            ORDER BY artist, album, title
+            """,
+            (version,),
+        ).fetchall()
+        return [self._row_to_track(r) for r in rows]
+
+    def list_embedded_tracks(self) -> list[Track]:
+        version = self.config.embedding_version()
+        rows = self.conn.execute(
+            """
+            SELECT * FROM tracks
+            WHERE status = 'active'
+              AND indexed_at IS NOT NULL
+              AND embedding_version = ?
+            ORDER BY artist, album, title
+            """,
+            (version,),
+        ).fetchall()
+        return [self._row_to_track(r) for r in rows]
+
+    def count_embedded_tracks(self) -> int:
+        version = self.config.embedding_version()
+        row = self.conn.execute(
+            """
+            SELECT COUNT(*) FROM tracks
+            WHERE status = 'active'
+              AND indexed_at IS NOT NULL
+              AND embedding_version = ?
+            """,
+            (version,),
+        ).fetchone()
+        return int(row[0])
+
+    def mark_track_embedded(
+        self,
+        track_id: str,
+        *,
+        duration_ms: int,
+        version: str,
+    ) -> None:
+        now_iso = _iso(utcnow())
+        self.conn.execute(
+            """
+            UPDATE tracks SET
+                status = ?, indexed_at = ?, embedding_version = ?,
+                duration_ms = ?, updated_at = ?
+            WHERE track_id = ?
+            """,
+            (
+                TrackStatus.ACTIVE.value,
+                now_iso,
+                version,
+                duration_ms,
+                now_iso,
+                track_id,
+            ),
+        )
+        self.conn.commit()
+
+    def mark_track_failed(self, track_id: str, when: datetime) -> None:
+        now_iso = _iso(when)
+        self.conn.execute(
+            "UPDATE tracks SET status = ?, updated_at = ? WHERE track_id = ?",
+            (TrackStatus.FAILED.value, now_iso, track_id),
+        )
+        self.conn.commit()
+
     def upsert_scanned_file(self, scanned: ScannedFile, *, now: datetime | None = None) -> str:
         """Register or update a scanned file. Returns track_id."""
         now = now or utcnow()

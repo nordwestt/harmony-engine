@@ -30,7 +30,12 @@ dependencies = [
 [project.optional-dependencies]
 db = ["pyturso>=0.6"]
 audio = ["soundfile>=0.12", "librosa>=0.10"]
-embed = ["torch>=2.0", "transformers>=4.36"]
+embed = [
+    "muq>=0.1.0",
+    "torch>=2.0",
+    "librosa>=0.10",
+    "soundfile>=0.12",
+]
 index = ["faiss-cpu>=1.7"]
 api = ["fastapi>=0.110", "uvicorn[standard]>=0.27"]
 watch = ["watchdog>=4.0"]

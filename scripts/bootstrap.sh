@@ -4,7 +4,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-uv sync --extra db --group dev
+uv sync --extra db --extra embed --group dev
 
 uv run harmony init
 uv run harmony status

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from harmony.config import Config
 from harmony.embedding.muq_mulan import MuQMuLanEmbedder
-from harmony.index.brute import BruteForceIndex
+from harmony.embedding.pipeline import TrackEmbeddingPipeline
+from harmony.index.manager import TrackIndexManager
 from harmony.models import SearchResult, SyncReport
 from harmony.retrieval.filters import Filters
 from harmony.retrieval.search import SearchEngine
@@ -14,6 +16,8 @@ from harmony.scanner.filesystem import FilesystemScanner
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.sync import LibrarySync
 from harmony.storage.vectors import VectorStore
+
+logger = logging.getLogger(__name__)
 
 
 class Engine:
@@ -25,7 +29,8 @@ class Engine:
         self._sync: LibrarySync | None = None
         self._vectors: VectorStore | None = None
         self._embedder: MuQMuLanEmbedder | None = None
-        self._track_index: BruteForceIndex | None = None
+        self._pipeline: TrackEmbeddingPipeline | None = None
+        self._index_manager: TrackIndexManager | None = None
         self._search: SearchEngine | None = None
 
     @property
@@ -58,17 +63,27 @@ class Engine:
         *,
         paths: list[str | Path] | None = None,
         full_rescan: bool = False,  # noqa: ARG002 — reserved for future use
+        embed: bool = True,
     ) -> SyncReport:
-        """Scan filesystem paths and reconcile library metadata.
-
-        Embedding is not yet wired; this pass discovers files and updates Turso.
-        """
+        """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
         scan_paths = paths or self.config.filesystem.paths
         if not scan_paths:
             raise ValueError("No paths provided. Pass paths= or configure filesystem.paths")
 
         scanner = FilesystemScanner(scan_paths, config=self.config.filesystem)
-        return self.sync.reconcile(scanner)
+        report = self.sync.reconcile(scanner)
+
+        if embed:
+            embedded, failed = self._get_pipeline().embed_pending()
+            report.embedded = embedded
+            report.failed += failed
+
+            if embedded > 0:
+                self._get_index_manager().rebuild()
+            else:
+                self._get_index_manager().ensure_loaded()
+
+        return report
 
     def stats(self) -> dict[str, int | str]:
         """Return library statistics."""
@@ -77,10 +92,12 @@ class Engine:
             "data_dir": str(self.config.data_dir),
             "embedding_version": self.config.embedding_version(),
             "tracks_active": by_status.get("active", 0),
+            "tracks_embedded": self.store.count_embedded_tracks(),
             "tracks_missing": by_status.get("missing", 0),
             "tracks_removed": by_status.get("removed", 0),
             "tracks_failed": by_status.get("failed", 0),
             "tracks_total": sum(by_status.values()),
+            "index_size": self._get_index_manager().ensure_loaded().size,
         }
 
     def search_by_text(
@@ -106,15 +123,34 @@ class Engine:
         if self._store is not None:
             self._store.close()
 
+    def _get_embedder(self) -> MuQMuLanEmbedder:
+        if self._embedder is None:
+            self._embedder = MuQMuLanEmbedder(self.config.embedding)
+        return self._embedder
+
+    def _get_pipeline(self) -> TrackEmbeddingPipeline:
+        if self._pipeline is None:
+            self._pipeline = TrackEmbeddingPipeline(
+                self.config,
+                self.store,
+                self.vectors,
+                self._get_embedder(),
+            )
+        return self._pipeline
+
+    def _get_index_manager(self) -> TrackIndexManager:
+        if self._index_manager is None:
+            self._index_manager = TrackIndexManager(self.config, self.store, self.vectors)
+        return self._index_manager
+
     def _get_search(self) -> SearchEngine:
         if self._search is None:
-            self._embedder = MuQMuLanEmbedder(self.config.embedding)
-            self._track_index = BruteForceIndex()
             self._search = SearchEngine(
                 self.config,
                 self.store,
-                self._embedder,
-                self._track_index,
+                self._get_embedder(),
+                self._get_index_manager().ensure_loaded(),
+                self.vectors,
             )
         return self._search
 

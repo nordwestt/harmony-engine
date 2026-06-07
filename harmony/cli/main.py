@@ -40,12 +40,14 @@ def init(ctx: click.Context) -> None:
 @click.argument("paths", nargs=-1, type=click.Path(exists=True, path_type=Path))
 @click.option("--full", is_flag=True, help="Force full rescan (reserved)")
 @click.option("--watch", is_flag=True, help="Watch filesystem for changes (not yet implemented)")
+@click.option("--no-embed", is_flag=True, help="Scan metadata only, skip embedding")
 @click.pass_context
 def index(
     ctx: click.Context,
     paths: tuple[Path, ...],
     full: bool,
     watch: bool,
+    no_embed: bool,
 ) -> None:
     """Scan and reconcile a music library."""
     if watch:
@@ -56,7 +58,7 @@ def index(
     path_strs = [str(p) for p in paths] if paths else None
 
     try:
-        report = engine.index(paths=path_strs, full_rescan=full)
+        report = engine.index(paths=path_strs, full_rescan=full, embed=not no_embed)
     except (ValueError, NotImplementedError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
@@ -66,6 +68,8 @@ def index(
     click.echo(f"Added:      {report.added}")
     click.echo(f"Moved:      {report.moved}")
     click.echo(f"Skipped:    {report.skipped}")
+    click.echo(f"Embedded:   {report.embedded}")
+    click.echo(f"Failed:     {report.failed}")
     click.echo(f"Missing:    {report.missing}")
     click.echo(f"Removed:    {report.removed}")
     click.echo(f"Duration:   {report.duration_ms}ms")
@@ -134,7 +138,7 @@ def search_text(ctx: click.Context, query: str, k: int, as_json: bool) -> None:
     engine = Engine(ctx.obj["data_dir"])
     try:
         result = engine.search_by_text(query, k=k)
-    except NotImplementedError as e:
+    except (NotImplementedError, RuntimeError, ImportError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     finally:

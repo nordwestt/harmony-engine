@@ -10,6 +10,7 @@ from harmony.index.base import IndexBackend
 from harmony.models import QueryInfo, ScoredItem, SearchResult
 from harmony.retrieval.filters import Filters
 from harmony.storage.metadata import MetadataStore
+from harmony.storage.vectors import VectorStore
 
 
 class SearchEngine:
@@ -19,11 +20,13 @@ class SearchEngine:
         store: MetadataStore,
         embedder: Embedder,
         track_index: IndexBackend,
+        vectors: VectorStore,
     ) -> None:
         self.config = config
         self.store = store
         self.embedder = embedder
         self.track_index = track_index
+        self.vectors = vectors
 
     def search_by_text(
         self,
@@ -35,33 +38,20 @@ class SearchEngine:
         k = k or self.config.retrieval.default_k
         t0 = time.perf_counter()
 
+        if self.track_index.size == 0:
+            raise RuntimeError(
+                "No embedded tracks in the index. Run: harmony index /path/to/music"
+            )
+
         vector = self.embedder.embed_text(query)
         ids, scores = self.track_index.search(vector, k=k * 2)
 
-        items: list[ScoredItem] = []
-        for rank, (track_id, score) in enumerate(zip(ids, scores, strict=False)):
-            if filters and track_id in filters.exclude_track_ids:
-                continue
-            track = self.store.get_track(track_id)
-            if track is None or track.status.value == "removed":
-                continue
-            items.append(
-                ScoredItem(
-                    track_id=track_id,
-                    score=score,
-                    rank=rank + 1,
-                    match_granularity="track",
-                    metadata=track,
-                )
-            )
-            if len(items) >= k:
-                break
-
-        active = self.store.count_tracks_by_status().get("active", 0)
+        items = self._build_results(ids, scores, k=k, filters=filters)
+        embedded = self.store.count_embedded_tracks()
         return SearchResult(
             items=items,
             query=QueryInfo(type="text", value=query, filters=filters.__dict__ if filters else None),
-            total_indexed=active,
+            total_indexed=embedded,
             took_ms=int((time.perf_counter() - t0) * 1000),
         )
 
@@ -72,4 +62,63 @@ class SearchEngine:
         k: int | None = None,
         filters: Filters | None = None,
     ) -> SearchResult:
-        raise NotImplementedError("search_by_track requires stored embeddings")
+        k = k or self.config.retrieval.default_k
+        t0 = time.perf_counter()
+
+        if self.track_index.size == 0:
+            raise RuntimeError(
+                "No embedded tracks in the index. Run: harmony index /path/to/music"
+            )
+
+        vector = self.vectors.load_track_vector(track_id, self.config.embedding_version())
+        if vector is None:
+            raise ValueError(f"No embedding stored for track {track_id}")
+
+        ids, scores = self.track_index.search(vector, k=k + 1)
+        items = self._build_results(
+            ids,
+            scores,
+            k=k,
+            filters=filters,
+            exclude_track_ids={track_id},
+        )
+        embedded = self.store.count_embedded_tracks()
+        return SearchResult(
+            items=items,
+            query=QueryInfo(type="track", value=track_id, filters=filters.__dict__ if filters else None),
+            total_indexed=embedded,
+            took_ms=int((time.perf_counter() - t0) * 1000),
+        )
+
+    def _build_results(
+        self,
+        ids: list[str],
+        scores: list[float],
+        *,
+        k: int,
+        filters: Filters | None,
+        exclude_track_ids: set[str] | None = None,
+    ) -> list[ScoredItem]:
+        exclude = set(exclude_track_ids or [])
+        if filters:
+            exclude.update(filters.exclude_track_ids)
+
+        items: list[ScoredItem] = []
+        for track_id, score in zip(ids, scores, strict=False):
+            if track_id in exclude:
+                continue
+            track = self.store.get_track(track_id)
+            if track is None or track.status.value == "removed":
+                continue
+            items.append(
+                ScoredItem(
+                    track_id=track_id,
+                    score=score,
+                    rank=len(items) + 1,
+                    match_granularity="track",
+                    metadata=track,
+                )
+            )
+            if len(items) >= k:
+                break
+        return items

@@ -54,7 +54,7 @@ def create_app(data_dir: Path | str | None = None) -> FastAPI:
             "skipped": report.skipped,
             "missing": report.missing,
             "removed": report.removed,
-            "reembedded": report.reembedded,
+            "embedded": report.embedded,
             "failed": report.failed,
             "duration_ms": report.duration_ms,
         }
