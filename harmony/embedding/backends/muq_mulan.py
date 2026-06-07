@@ -40,6 +40,10 @@ class MuQMuLanEmbedder:
         return EMBEDDING_DIM
 
     @property
+    def pooling_strategy(self) -> str:
+        return "mean"
+
+    @property
     def device(self) -> str:
         if self._device is None:
             self._device = resolve_device(self._config.embedding.device)
