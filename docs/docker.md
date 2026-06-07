@@ -118,14 +118,23 @@ curl -X POST http://localhost:8000/v1/index \
 ```bash
 # CPU
 docker build -t harmony-engine:local .
+docker image ls harmony-engine:local
 
 # GPU
 docker build -f Dockerfile.gpu -t harmony-engine:cuda-local .
+docker image ls harmony-engine:cuda-local
 ```
 
 ## Image size
 
-Images are large (~2–4 GB) because they include PyTorch and audio dependencies. The MuQ-MuLan weights add ~1–2 GB on first index (stored in the `harmony-data` volume, not the image).
+Images bundle PyTorch and the MuQ-MuLan Python stack, but **not** the model weights (those download to `/data/huggingface` on first index).
+
+| Image | Typical compressed pull | Notes |
+|-------|-------------------------|-------|
+| `latest` (CPU) | ~1.5–2 GB | CPU-only PyTorch wheel |
+| `cuda` (GPU) | ~3–4 GB | CUDA runtime base + cu121 PyTorch |
+
+The GPU image cannot shrink much further: the NVIDIA CUDA runtime and cu121 PyTorch are required for embedding on a GPU.
 
 ## API reference
 

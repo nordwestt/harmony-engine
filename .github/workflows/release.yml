@@ -84,12 +84,19 @@ jobs:
           echo "tags=$TAGS" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.tags.outputs.tags }}
+
+      - name: Report image size
+        run: |
+          IMAGE="${{ env.REGISTRY }}/${{ github.repository }}"
+          echo "Digest: ${{ steps.build.outputs.digest }}"
+          docker images "${IMAGE}" --format 'table {{.Tag}}\t{{.Size}}' || true
 
   github-release:
     needs: docker

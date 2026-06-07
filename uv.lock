@@ -648,6 +648,10 @@ api = [
     { name = "fastapi" },
     { name = "uvicorn", extra = ["standard"] },
 ]
+api-minimal = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 audio = [
     { name = "librosa" },
     { name = "soundfile" },
@@ -687,6 +691,7 @@ requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "faiss-cpu", marker = "extra == 'index'", specifier = ">=1.7" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'api-minimal'", specifier = ">=0.110" },
     { name = "harmony-engine", extras = ["db", "audio", "embed", "index", "api", "watch", "dev"], marker = "extra == 'all'" },
     { name = "librosa", marker = "extra == 'audio'", specifier = ">=0.10" },
     { name = "librosa", marker = "extra == 'embed'", specifier = ">=0.10" },
@@ -701,10 +706,11 @@ requires-dist = [
     { name = "soundfile", marker = "extra == 'audio'", specifier = ">=0.12" },
     { name = "soundfile", marker = "extra == 'embed'", specifier = ">=0.12" },
     { name = "torch", marker = "extra == 'embed'", specifier = ">=2.0" },
+    { name = "uvicorn", marker = "extra == 'api-minimal'", specifier = ">=0.27" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.27" },
     { name = "watchdog", marker = "extra == 'watch'", specifier = ">=4.0" },
 ]
-provides-extras = ["db", "audio", "embed", "index", "api", "watch", "dev", "all"]
+provides-extras = ["db", "audio", "embed", "index", "api", "api-minimal", "watch", "dev", "all"]
 
 [package.metadata.requires-dev]
 dev = [
