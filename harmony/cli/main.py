@@ -255,6 +255,47 @@ def sync_history(ctx: click.Context, limit: int, local: bool) -> None:
 
 
 @cli.group()
+def bench() -> None:
+    """Benchmark embedding performance."""
+
+
+@bench.command("encode")
+@click.argument("path", type=click.Path(exists=True, path_type=Path))
+@click.option("--json", "as_json", is_flag=True, help="Output JSON")
+@click.pass_context
+def bench_encode(ctx: click.Context, path: Path, as_json: bool) -> None:
+    """Time encoding a single audio file (load, resample, chunk, embed)."""
+    from harmony.config import Config
+    from harmony.embedding.benchmark import benchmark_encode
+
+    config = Config.load(ctx.obj["data_dir"])
+    try:
+        result = benchmark_encode(path, config)
+    except (ValueError, ImportError, OSError) as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(1)
+
+    if as_json:
+        import dataclasses
+
+        click.echo(json.dumps(dataclasses.asdict(result), indent=2))
+        return
+
+    click.echo(f"File:        {result.path}")
+    click.echo(f"Duration:    {result.duration_s:.1f}s")
+    click.echo(f"Sample rate: {result.source_sample_rate} → {result.target_sample_rate} Hz")
+    click.echo(f"Chunks:      {result.chunks} ({result.batches} batches of {result.batch_size})")
+    click.echo(f"Model:       {result.model} on {result.device}")
+    click.echo(f"Vector dim:  {result.vector_dim}")
+    click.echo(f"Load:        {result.load_ms:.0f} ms")
+    if result.resample_ms > 0:
+        click.echo(f"Resample:    {result.resample_ms:.0f} ms")
+    click.echo(f"Chunk:       {result.chunk_ms:.0f} ms")
+    click.echo(f"Embed:       {result.embed_ms:.0f} ms")
+    click.echo(f"Total:       {result.total_ms:.0f} ms ({result.total_ms / 1000:.1f}s)")
+
+
+@cli.group()
 def search() -> None:
     """Search the indexed library."""
 

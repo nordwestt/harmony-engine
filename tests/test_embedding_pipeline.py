@@ -54,6 +54,52 @@ def test_embed_track_persists_vector(tmp_path: Path, wav_file: Path) -> None:
     store.close()
 
 
+def test_embed_track_resamples_once_before_chunking(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pytest.importorskip("soundfile")
+    import soundfile as sf
+
+    resample_calls: list[tuple[int, int, int]] = []
+
+    def _track_resample(waveform: np.ndarray, source_sr: int, target_sr: int) -> np.ndarray:
+        resample_calls.append((len(waveform), source_sr, target_sr))
+        ratio = target_sr / source_sr
+        out_len = int(len(waveform) * ratio)
+        return np.linspace(0.0, 1.0, out_len, dtype=np.float32)
+
+    monkeypatch.setattr("harmony.embedding.pipeline.resample", _track_resample)
+
+    sr = 44100
+    t = np.linspace(0, 12, sr * 12, endpoint=False)
+    audio = 0.1 * np.sin(2 * np.pi * 440 * t)
+    path = tmp_path / "tone-44k.wav"
+    sf.write(path, audio, sr)
+
+    cfg = Config(data_dir=tmp_path / "data")
+    store = MetadataStore(cfg)
+    vectors = VectorStore(cfg)
+    pipeline = TrackEmbeddingPipeline(cfg, store, vectors, FakeEmbedder())
+
+    track = Track(
+        track_id=TRACK_ID,
+        content_hash="abc",
+        status=TrackStatus.ACTIVE,
+        primary_path=str(path),
+        duration_ms=0,
+        title="Tone",
+        artist="Test",
+        album="Test",
+        embedding_version=cfg.embedding_version(),
+    )
+
+    pipeline.embed_track(track)
+    assert len(resample_calls) == 1
+    assert resample_calls[0] == (sr * 12, 44100, 24000)
+    store.close()
+
+
 def test_embed_pending_processes_unindexed_track(tmp_path: Path, wav_file: Path) -> None:
     cfg = Config(data_dir=tmp_path / "data")
     store = MetadataStore(cfg)

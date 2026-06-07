@@ -11,6 +11,7 @@ import numpy as np
 
 from harmony.audio.chunking import chunk_audio
 from harmony.audio.loader import load_audio
+from harmony.audio.resample import resample
 from harmony.config import Config
 from harmony.embedding.base import Embedder
 from harmony.embedding.pooling import mean_pool
@@ -42,6 +43,11 @@ class TrackEmbeddingPipeline:
             config=self.config.audio,
         )
         duration_ms = int(len(waveform) / sample_rate * 1000)
+
+        target_sr = self.config.audio.target_sample_rate
+        if sample_rate != target_sr:
+            waveform = resample(waveform, sample_rate, target_sr)
+            sample_rate = target_sr
 
         chunks = chunk_audio(
             waveform,
