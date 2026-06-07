@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterator
 
 from harmony.config import FilesystemConfig
+from harmony.errors import PathNotAllowedError
 from harmony.models import ScannedFile
 
 
@@ -58,6 +59,53 @@ class FilesystemScanner:
 
     def resolve_path(self, path: str) -> Path:
         return Path(path).expanduser().resolve()
+
+
+def _is_under_root(path: Path, root: Path) -> bool:
+    try:
+        return path.is_relative_to(root)
+    except AttributeError:
+        try:
+            path.relative_to(root)
+            return True
+        except ValueError:
+            return False
+
+
+def validate_scan_paths(
+    paths: list[str | Path] | None,
+    allowed_roots: list[str | Path],
+) -> list[Path]:
+    """Resolve and validate index scan paths against configured roots.
+
+    When *paths* is None, returns resolved allowed roots.
+    Raises PathNotAllowedError when a path is outside the allowlist or invalid.
+    """
+    roots = [Path(p).expanduser().resolve() for p in allowed_roots]
+    if not roots:
+        raise PathNotAllowedError(
+            "No scan roots configured. Set filesystem.paths in config.yaml "
+            "or HARMONY_INDEX_PATHS"
+        )
+
+    if paths is None:
+        return roots
+
+    resolved: list[Path] = []
+    for raw in paths:
+        path = Path(raw).expanduser().resolve()
+        if not path.exists():
+            raise PathNotAllowedError(f"Path does not exist: {raw}")
+        if not path.is_dir():
+            raise PathNotAllowedError(f"Path is not a directory: {raw}")
+        if not any(_is_under_root(path, root) for root in roots):
+            allowed = ", ".join(str(r) for r in roots)
+            raise PathNotAllowedError(
+                f"Path not allowed: {raw}. Must be under configured roots: {allowed}"
+            )
+        resolved.append(path)
+
+    return resolved
 
 
 def hash_file(path: Path, *, chunk_mb: int = 4) -> str:

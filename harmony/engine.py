@@ -8,13 +8,19 @@ from pathlib import Path
 
 from harmony.config import Config
 from harmony.embedding.base import Embedder
+from harmony.errors import (
+    DependencyMissingError,
+    ModelNotReadyError,
+    PathNotAllowedError,
+)
 from harmony.embedding.factory import create_embedder
 from harmony.embedding.pipeline import TrackEmbeddingPipeline
 from harmony.index.manager import TrackIndexManager
 from harmony.models import SearchResult, SyncReport
 from harmony.retrieval.filters import Filters
 from harmony.retrieval.search import SearchEngine
-from harmony.scanner.filesystem import FilesystemScanner
+from harmony.models import validate_track_id
+from harmony.scanner.filesystem import FilesystemScanner, validate_scan_paths
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.purge import LibraryPurge
 from harmony.storage.sync import LibrarySync
@@ -86,13 +92,20 @@ class Engine:
     ) -> SyncReport:
         """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
         self.ensure_initialized()
-        scan_paths = paths or self.config.filesystem.paths
-        if not scan_paths:
-            raise ValueError(
-                "No paths provided. Pass paths=, set filesystem.paths in config.yaml, "
-                "or set HARMONY_INDEX_PATHS"
-            )
+        allowed_roots = self.config.filesystem.paths
+        if not allowed_roots:
+            if paths:
+                bootstrap = [str(Path(p).expanduser().resolve()) for p in paths]
+                self.config.filesystem.paths = bootstrap
+                self.config.save()
+                allowed_roots = bootstrap
+            else:
+                raise PathNotAllowedError(
+                    "No scan roots configured. Set filesystem.paths in config.yaml "
+                    "or HARMONY_INDEX_PATHS"
+                )
 
+        scan_paths = validate_scan_paths(paths, allowed_roots)
         scanner = FilesystemScanner(scan_paths, config=self.config.filesystem)
         report = self.sync.reconcile(scanner)
 
@@ -175,6 +188,7 @@ class Engine:
         return items, total
 
     def get_track_detail(self, track_id: str) -> dict[str, object] | None:
+        validate_track_id(track_id)
         track = self.store.get_track(track_id)
         if track is None:
             return None
@@ -242,6 +256,17 @@ class Engine:
             "index_size": self._get_index_manager().ensure_loaded().size,
         }
 
+    def _ensure_search_ready(self) -> None:
+        model = self.model_status()
+        if model["loading"]:
+            raise ModelNotReadyError(
+                "Embedding model is still loading. Check GET /v1/ready for status."
+            )
+        if model["load_error"]:
+            raise ModelNotReadyError(
+                "Embedding model failed to load. Check server logs for details."
+            )
+
     def search_by_text(
         self,
         query: str,
@@ -250,7 +275,11 @@ class Engine:
         filters: Filters | None = None,
     ) -> SearchResult:
         """Search library by natural language query."""
-        return self._get_search().search_by_text(query, k=k, filters=filters)
+        self._ensure_search_ready()
+        try:
+            return self._get_search().search_by_text(query, k=k, filters=filters)
+        except ImportError as e:
+            raise DependencyMissingError(str(e)) from e
 
     def search_by_track(
         self,
@@ -259,7 +288,12 @@ class Engine:
         k: int | None = None,
         filters: Filters | None = None,
     ) -> SearchResult:
-        return self._get_search().search_by_track(track_id, k=k, filters=filters)
+        validate_track_id(track_id)
+        self._ensure_search_ready()
+        try:
+            return self._get_search().search_by_track(track_id, k=k, filters=filters)
+        except ImportError as e:
+            raise DependencyMissingError(str(e)) from e
 
     def preload_model(self) -> None:
         """Load embedding model weights into memory."""

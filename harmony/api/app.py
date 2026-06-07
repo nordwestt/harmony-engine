@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -27,12 +28,42 @@ from harmony.api.schemas import (
 )
 
 from harmony.engine import Engine
+from harmony.errors import (
+    DependencyMissingError,
+    HarmonyError,
+    IndexEmptyError,
+    InvalidTrackIdError,
+    ModelNotReadyError,
+    PathNotAllowedError,
+)
 from harmony.jobs.runner import IndexJobRunner
-from harmony.models import SyncReport
+from harmony.models import SyncReport, TrackStatus
+
+logger = logging.getLogger(__name__)
 
 MODEL_LOADING_MESSAGE = (
     "Hey, I'm just busy downloading the weights from Hugging Face - please wait!"
 )
+MODEL_LOAD_FAILED_MESSAGE = "Model failed to load; check server logs for details."
+
+
+def _format_validation_errors(exc: RequestValidationError) -> str:
+    parts: list[str] = []
+    for err in exc.errors():
+        loc = ".".join(str(part) for part in err.get("loc", ()))
+        msg = err.get("msg", "invalid value")
+        if loc:
+            parts.append(f"{loc}: {msg}")
+        else:
+            parts.append(msg)
+    return "; ".join(parts) if parts else "Validation error"
+
+
+def _harmony_error_response(exc: HarmonyError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.http_status,
+        content=ErrorResponse(error=exc.message, code=exc.code).model_dump(),
+    )
 
 
 def _search_result_to_response(result: Any, query: dict[str, Any]) -> dict[str, Any]:
@@ -128,7 +159,38 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(
             status_code=422,
-            content=ErrorResponse(error=str(exc), code="validation_error").model_dump(),
+            content=ErrorResponse(
+                error=_format_validation_errors(exc),
+                code="validation_error",
+            ).model_dump(),
+        )
+
+    def _harmony_exception_handler(_request: Request, exc: HarmonyError) -> JSONResponse:
+        return _harmony_error_response(exc)
+
+    for exc_type in (
+        IndexEmptyError,
+        ModelNotReadyError,
+        DependencyMissingError,
+        PathNotAllowedError,
+        InvalidTrackIdError,
+    ):
+        app.add_exception_handler(exc_type, _harmony_exception_handler)  # type: ignore[arg-type]
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        _request: Request,
+        exc: Exception,
+    ) -> JSONResponse:
+        if isinstance(exc, HarmonyError):
+            return _harmony_error_response(exc)
+        logger.exception("Unhandled exception")
+        return JSONResponse(
+            status_code=500,
+            content=ErrorResponse(
+                error="Internal server error",
+                code="internal_error",
+            ).model_dump(),
         )
 
     @app.on_event("startup")
@@ -166,9 +228,10 @@ def create_app(
                 message=MODEL_LOADING_MESSAGE,
             ).model_dump()
         if model["load_error"]:
+            logger.error("Model load failed: %s", model["load_error"])
             return HealthResponse(
                 status="error",
-                message=str(model["load_error"]),
+                message=MODEL_LOAD_FAILED_MESSAGE,
             ).model_dump()
         return HealthResponse(status="ok", message="Ready").model_dump()
 
@@ -184,6 +247,15 @@ def create_app(
         limit: int = Query(default=50, ge=1, le=500),
         status: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        if status is not None:
+            try:
+                TrackStatus(status)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid status: {status}. "
+                    f"Valid values: {', '.join(s.value for s in TrackStatus)}",
+                ) from e
         items, total = engine.list_tracks(offset=offset, limit=limit, status=status)
         return TracksListResponse(
             items=items,  # type: ignore[arg-type]
@@ -218,7 +290,10 @@ def create_app(
 
     @app.post("/v1/model/preload")
     def model_preload() -> dict[str, Any]:
-        engine.preload_model()
+        try:
+            engine.preload_model()
+        except ImportError as e:
+            raise DependencyMissingError(str(e)) from e
         return engine.model_status()
 
     @app.post("/v1/model/unload")
@@ -276,7 +351,7 @@ def create_app(
     def search_text(req: TextSearchRequest) -> dict[str, Any]:
         try:
             result = engine.search_by_text(req.query, k=req.k)
-        except (NotImplementedError, RuntimeError) as e:
+        except NotImplementedError as e:
             raise HTTPException(status_code=501, detail=str(e)) from e
 
         return _search_result_to_response(
@@ -290,7 +365,7 @@ def create_app(
             result = engine.search_by_track(req.track_id, k=req.k)
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
-        except (NotImplementedError, RuntimeError) as e:
+        except NotImplementedError as e:
             raise HTTPException(status_code=501, detail=str(e)) from e
 
         return _search_result_to_response(

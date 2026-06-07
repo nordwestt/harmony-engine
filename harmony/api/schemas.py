@@ -2,9 +2,19 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+TRACK_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+MAX_QUERY_LENGTH = 512
+MAX_INDEX_PATHS = 32
+MAX_PATH_STRING_LENGTH = 4096
 
 
 class ErrorResponse(BaseModel):
@@ -15,6 +25,7 @@ class ErrorResponse(BaseModel):
 class IndexRequest(BaseModel):
     paths: list[str] | None = Field(
         default=None,
+        max_length=MAX_INDEX_PATHS,
         description="Directories to scan; defaults to HARMONY_INDEX_PATHS or filesystem.paths",
     )
     full_rescan: bool = False
@@ -22,6 +33,18 @@ class IndexRequest(BaseModel):
     prune: bool = False
     reembed: bool = False
     async_: bool = Field(default=False, alias="async")
+
+    @field_validator("paths")
+    @classmethod
+    def validate_path_strings(cls, paths: list[str] | None) -> list[str] | None:
+        if paths is None:
+            return None
+        for path in paths:
+            if len(path) > MAX_PATH_STRING_LENGTH:
+                raise ValueError(
+                    f"Path exceeds maximum length of {MAX_PATH_STRING_LENGTH} characters"
+                )
+        return paths
 
 
 class IndexJobResponse(BaseModel):
@@ -57,13 +80,28 @@ class SyncReportResponse(BaseModel):
 
 
 class TextSearchRequest(BaseModel):
-    query: str
+    query: str = Field(min_length=1, max_length=MAX_QUERY_LENGTH)
     k: int = Field(default=50, ge=1, le=500)
+
+    @field_validator("query")
+    @classmethod
+    def validate_query(cls, query: str) -> str:
+        stripped = query.strip()
+        if not stripped:
+            raise ValueError("Query must not be empty or whitespace-only")
+        return stripped
 
 
 class TrackSearchRequest(BaseModel):
     track_id: str
     k: int = Field(default=50, ge=1, le=500)
+
+    @field_validator("track_id")
+    @classmethod
+    def validate_track_id_format(cls, track_id: str) -> str:
+        if not TRACK_ID_PATTERN.match(track_id):
+            raise ValueError(f"Invalid track ID format: {track_id}")
+        return track_id.lower()
 
 
 class PurgeRequest(BaseModel):

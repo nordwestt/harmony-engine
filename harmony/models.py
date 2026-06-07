@@ -2,11 +2,19 @@
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
+
+from harmony.errors import InvalidTrackIdError
+
+TRACK_ID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 # Namespace for deterministic track IDs from content hashes.
 TRACK_ID_NAMESPACE = uuid.UUID("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
@@ -28,6 +36,13 @@ class PathChangeReason(str, Enum):
 def track_id_from_content_hash(content_hash: str) -> str:
     """Derive a stable track ID from a SHA-256 content hash."""
     return str(uuid.uuid5(TRACK_ID_NAMESPACE, content_hash))
+
+
+def validate_track_id(track_id: str) -> str:
+    """Validate and return a normalized track ID (lowercase UUID)."""
+    if not TRACK_ID_PATTERN.match(track_id):
+        raise InvalidTrackIdError(f"Invalid track ID: {track_id}")
+    return track_id.lower()
 
 
 def utcnow() -> datetime:

@@ -19,6 +19,7 @@ from harmony.client import (
     wait_for_index_job,
 )
 from harmony.engine import Engine
+from harmony.errors import PathNotAllowedError
 
 
 def _resolve_api(local: bool) -> str | None:
@@ -165,7 +166,7 @@ def index(
             prune=prune,
             reembed=reembed,
         )
-    except (ValueError, NotImplementedError, ImportError) as e:
+    except (ValueError, NotImplementedError, ImportError, PathNotAllowedError) as e:
         click.echo(f"Error: {e}", err=True)
         sys.exit(1)
     finally:

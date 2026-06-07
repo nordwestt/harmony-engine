@@ -8,7 +8,11 @@ import numpy as np
 
 from harmony.config import Config
 from harmony.engine import Engine
-from harmony.models import utcnow
+from harmony.models import track_id_from_content_hash, utcnow
+
+TRACK_A = track_id_from_content_hash("hash-a")
+TRACK_B = track_id_from_content_hash("hash-b")
+TRACK_C = track_id_from_content_hash("hash-c")
 from harmony.retrieval.search import SearchEngine
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
@@ -61,14 +65,14 @@ def test_search_sees_incremental_index_update(tmp_path: Path) -> None:
 
     _insert_track(
         store,
-        track_id="a",
+        track_id=TRACK_A,
         version=version,
         vector=np.array([1.0, 0.0, 0.0], dtype=np.float32),
         vectors=vectors,
     )
     _insert_track(
         store,
-        track_id="b",
+        track_id=TRACK_B,
         version=version,
         vector=np.array([0.0, 1.0, 0.0], dtype=np.float32),
         vectors=vectors,
@@ -80,22 +84,22 @@ def test_search_sees_incremental_index_update(tmp_path: Path) -> None:
     manager.rebuild()
 
     search = engine._get_search()
-    result = search.search_by_track("a", k=10)
+    result = search.search_by_track(TRACK_A, k=10)
     assert len(result.items) == 1
-    assert result.items[0].track_id == "b"
+    assert result.items[0].track_id == TRACK_B
 
     _insert_track(
         store,
-        track_id="c",
+        track_id=TRACK_C,
         version=version,
         vector=np.array([0.9, 0.1, 0.0], dtype=np.float32),
         vectors=vectors,
     )
-    manager.upsert_track("c", vectors.load_track_vector("c", version))
+    manager.upsert_track(TRACK_C, vectors.load_track_vector(TRACK_C, version))
 
-    result2 = search.search_by_track("a", k=10)
+    result2 = search.search_by_track(TRACK_A, k=10)
     track_ids = {item.track_id for item in result2.items}
-    assert track_ids == {"b", "c"}
+    assert track_ids == {TRACK_B, TRACK_C}
     store.close()
     engine.close()
 
@@ -108,7 +112,7 @@ def test_invalidate_search_clears_cached_engine(tmp_path: Path) -> None:
 
     _insert_track(
         store,
-        track_id="a",
+        track_id=TRACK_A,
         version=version,
         vector=np.array([1.0, 0.0, 0.0], dtype=np.float32),
         vectors=vectors,

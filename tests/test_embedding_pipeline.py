@@ -9,7 +9,9 @@ import pytest
 
 from harmony.config import Config
 from harmony.embedding.pipeline import TrackEmbeddingPipeline
-from harmony.models import Track, TrackStatus, utcnow
+from harmony.models import Track, TrackStatus, track_id_from_content_hash, utcnow
+
+TRACK_ID = track_id_from_content_hash("test-track")
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
 from tests.fake_embedder import FakeEmbedder
@@ -35,7 +37,7 @@ def test_embed_track_persists_vector(tmp_path: Path, wav_file: Path) -> None:
     pipeline = TrackEmbeddingPipeline(cfg, store, vectors, FakeEmbedder())
 
     track = Track(
-        track_id="track-1",
+        track_id=TRACK_ID,
         content_hash="abc",
         status=TrackStatus.ACTIVE,
         primary_path=str(wav_file),
@@ -48,7 +50,7 @@ def test_embed_track_persists_vector(tmp_path: Path, wav_file: Path) -> None:
 
     vector = pipeline.embed_track(track)
     assert vector.shape == (4,)
-    assert vectors.load_track_vector("track-1") is not None
+    assert vectors.load_track_vector(TRACK_ID) is not None
     store.close()
 
 
@@ -64,7 +66,7 @@ def test_embed_pending_processes_unindexed_track(tmp_path: Path, wav_file: Path)
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
         """,
         (
-            "track-1",
+            TRACK_ID,
             "hash",
             "active",
             str(wav_file),

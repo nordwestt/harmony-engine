@@ -7,6 +7,7 @@ from collections.abc import Callable
 
 from harmony.config import Config
 from harmony.embedding.base import Embedder
+from harmony.errors import IndexEmptyError
 from harmony.index.base import IndexBackend
 from harmony.models import QueryInfo, ScoredItem, SearchResult
 from harmony.retrieval.filters import Filters
@@ -44,7 +45,7 @@ class SearchEngine:
 
         track_index = self._get_index()
         if track_index.size == 0:
-            raise RuntimeError(
+            raise IndexEmptyError(
                 "No embedded tracks in the index. Run: harmony index /path/to/music"
             )
 
@@ -72,7 +73,7 @@ class SearchEngine:
 
         track_index = self._get_index()
         if track_index.size == 0:
-            raise RuntimeError(
+            raise IndexEmptyError(
                 "No embedded tracks in the index. Run: harmony index /path/to/music"
             )
 

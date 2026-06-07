@@ -6,7 +6,10 @@ import numpy as np
 
 from harmony.config import Config
 from harmony.engine import Engine
-from harmony.models import TrackStatus, utcnow
+from harmony.models import TrackStatus, track_id_from_content_hash, utcnow
+
+TRACK_KEEP = track_id_from_content_hash("keep")
+TRACK_GONE = track_id_from_content_hash("gone")
 from harmony.scanner.filesystem import FilesystemScanner
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.purge import LibraryPurge
@@ -49,16 +52,16 @@ def test_prune_missing_deletes_gone_tracks(tmp_path: Path) -> None:
     store = MetadataStore(cfg)
     vectors = VectorStore(cfg)
 
-    _insert_track(store, "keep", "/music/keep.flac", "active")
-    _insert_track(store, "gone", "/music/gone.flac", "missing")
-    vectors.save_track_vector("gone", np.array([1.0, 0.0], dtype=np.float32))
+    _insert_track(store, TRACK_KEEP, "/music/keep.flac", "active")
+    _insert_track(store, TRACK_GONE, "/music/gone.flac", "missing")
+    vectors.save_track_vector(TRACK_GONE, np.array([1.0, 0.0], dtype=np.float32))
 
     purge = LibraryPurge(cfg, store, vectors)
     purged = purge.prune_missing()
 
-    assert purged == ["gone"]
+    assert purged == [TRACK_GONE]
     assert store.count_tracks_by_status().get("active", 0) == 1
-    assert vectors.load_track_vector("gone") is None
+    assert vectors.load_track_vector(TRACK_GONE) is None
     store.close()
 
 
@@ -73,8 +76,8 @@ def test_index_prune_after_library_shrink(tmp_path: Path) -> None:
     sync = LibrarySync(cfg, store)
 
     sync.reconcile(FilesystemScanner([music]))
-    _insert_track(store, "gone", "/music/gone.flac", "active")
-    store.set_tracks_status(["gone"], TrackStatus.MISSING)
+    _insert_track(store, TRACK_GONE, "/music/gone.flac", "active")
+    store.set_tracks_status([TRACK_GONE], TrackStatus.MISSING)
 
     engine = Engine(cfg.data_dir)
     report = engine.index(paths=[str(music)], embed=False, prune=True)

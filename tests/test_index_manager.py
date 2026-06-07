@@ -6,7 +6,10 @@ import numpy as np
 
 from harmony.config import Config
 from harmony.index.manager import TrackIndexManager
-from harmony.models import TrackStatus, utcnow
+from harmony.models import TrackStatus, track_id_from_content_hash, utcnow
+
+TRACK_A = track_id_from_content_hash("h1")
+TRACK_B = track_id_from_content_hash("h2")
 from harmony.storage.metadata import MetadataStore
 from harmony.storage.vectors import VectorStore
 
@@ -26,7 +29,7 @@ def test_rebuild_loads_vectors_into_index(tmp_path: Path) -> None:
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
-            "a",
+            TRACK_A,
             "h1",
             "active",
             "/music/a.flac",
@@ -43,8 +46,8 @@ def test_rebuild_loads_vectors_into_index(tmp_path: Path) -> None:
     )
     store.conn.commit()
 
-    vectors.save_track_vector("a", np.array([1.0, 0.0, 0.0], dtype=np.float32), version)
-    vectors.save_track_vector("b", np.array([0.0, 1.0, 0.0], dtype=np.float32), version)
+    vectors.save_track_vector(TRACK_A, np.array([1.0, 0.0, 0.0], dtype=np.float32), version)
+    vectors.save_track_vector(TRACK_B, np.array([0.0, 1.0, 0.0], dtype=np.float32), version)
 
     manager = TrackIndexManager(cfg, store, vectors)
     count = manager.rebuild()
@@ -52,6 +55,6 @@ def test_rebuild_loads_vectors_into_index(tmp_path: Path) -> None:
 
     index = manager.ensure_loaded()
     ids, scores = index.search(np.array([1.0, 0.0, 0.0]), k=1)
-    assert ids == ["a"]
+    assert ids == [TRACK_A]
     assert scores[0] > 0.9
     store.close()

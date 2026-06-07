@@ -60,6 +60,36 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 
 Errors return `{"error": "...", "code": "..."}`.
 
+Common error codes:
+
+| Code | HTTP | Meaning |
+|------|------|---------|
+| `validation_error` | 422 | Invalid request body or query parameter |
+| `path_not_allowed` | 400 | Index path outside configured scan roots |
+| `invalid_track_id` | 400 | Track ID is not a valid UUID |
+| `index_not_ready` | 503 | No embedded tracks yet — run an index job first |
+| `model_not_ready` | 503 | Model is loading or failed to load |
+| `internal_error` | 500 | Unexpected server failure (details in logs only) |
+
+## Health and readiness
+
+| Endpoint | Use |
+|----------|-----|
+| `GET /health` | **Liveness** — returns `ok` once the HTTP server is listening |
+| `GET /v1/health` | Startup status while model weights download |
+| `GET /v1/ready` | **Readiness** — model loaded and index has vectors (required for search) |
+
+Search endpoints return `503` with `index_not_ready` or `model_not_ready` when the engine is not ready to serve queries. Poll `/v1/ready` before searching on a fresh install.
+
+## Security (trusted network)
+
+Harmony Engine has **no built-in authentication or rate limiting**. It is designed for self-hosting on a trusted network (localhost or a private LAN).
+
+- `harmony serve` binds `127.0.0.1` by default.
+- Docker binds `0.0.0.0` — do not expose port 8000 to the public internet without a reverse proxy (Caddy, nginx, etc.) that terminates TLS and enforces access control.
+- Index paths are restricted to configured scan roots (`filesystem.paths` or `HARMONY_INDEX_PATHS`). Requests to scan directories outside those roots are rejected.
+- Destructive endpoints (`POST /v1/library/purge`, `POST /v1/index`, model load/unload) are unauthenticated by design.
+
 ## Configuration
 
 | Variable | Description |

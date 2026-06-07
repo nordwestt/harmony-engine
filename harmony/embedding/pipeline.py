@@ -39,6 +39,7 @@ class TrackEmbeddingPipeline:
         waveform, sample_rate = load_audio(
             track.primary_path,
             mono=self.config.audio.mono,
+            config=self.config.audio,
         )
         duration_ms = int(len(waveform) / sample_rate * 1000)
 

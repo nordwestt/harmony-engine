@@ -60,6 +60,8 @@ class AudioConfig:
     chunk_seconds: int = 10
     overlap_seconds: int = 2
     min_chunk_seconds: int = 1
+    max_file_size_bytes: int = 500_000_000
+    max_duration_seconds: int = 3600
 
 
 @dataclass
@@ -84,6 +86,8 @@ class RetrievalConfig:
     default_k: int = 50
     default_granularity: str = "track"
     default_aggregation: str = "max"
+    max_query_length: int = 512
+    max_index_paths: int = 32
 
 
 @dataclass

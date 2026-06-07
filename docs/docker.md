@@ -137,6 +137,31 @@ Images bundle PyTorch and the MuQ-MuLan Python stack, but **not** the model weig
 
 The GPU image cannot shrink much further: the NVIDIA CUDA runtime and cu121 PyTorch are required for embedding on a GPU.
 
+## Health checks
+
+The default compose healthcheck uses `GET /health` (liveness — server is listening). For stricter readiness (model loaded and index populated), override the healthcheck:
+
+```yaml
+healthcheck:
+  test: ["CMD", "curl", "-f", "http://localhost:8000/v1/ready"]
+  interval: 30s
+  timeout: 5s
+  retries: 3
+  start_period: 120s
+```
+
+Use a longer `start_period` on first run while model weights download.
+
+## Security
+
+The container listens on `0.0.0.0:8000` with **no authentication**. Treat it as a trusted-network service:
+
+- Bind to localhost only if you do not need remote access: `ports: ["127.0.0.1:8000:8000"]`
+- Or place a reverse proxy in front for TLS and access control
+- Index paths are limited to `HARMONY_INDEX_PATHS` (default `/music`)
+
+See [server.md](server.md) for error codes and readiness endpoints.
+
 ## API reference
 
 See [server.md](server.md) for endpoints, async indexing, and health checks.

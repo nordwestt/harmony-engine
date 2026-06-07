@@ -29,7 +29,7 @@ class MuQMuLanEmbedder:
         self._session_depth = 0
         self._loading = False
         self._load_error: str | None = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     @property
     def name(self) -> str:
@@ -178,62 +178,64 @@ class MuQMuLanEmbedder:
         if not waveforms:
             return np.empty((0, EMBEDDING_DIM), dtype=np.float32)
 
-        from harmony.audio.resample import resample
+        with self._lock:
+            try:
+                from harmony.audio.resample import resample
 
-        model = self._ensure_model()
-        import torch
+                model = self._ensure_model()
+                import torch
 
-        target_sr = self._config.audio.target_sample_rate
-        prepared: list[np.ndarray] = []
-        for waveform in waveforms:
-            wav = np.asarray(waveform, dtype=np.float32).reshape(-1)
-            if sample_rate != target_sr:
-                wav = resample(wav, sample_rate, target_sr)
-            prepared.append(wav)
+                target_sr = self._config.audio.target_sample_rate
+                prepared: list[np.ndarray] = []
+                for waveform in waveforms:
+                    wav = np.asarray(waveform, dtype=np.float32).reshape(-1)
+                    if sample_rate != target_sr:
+                        wav = resample(wav, sample_rate, target_sr)
+                    prepared.append(wav)
 
-        max_len = max(len(wav) for wav in prepared)
-        padded = np.zeros((len(prepared), max_len), dtype=np.float32)
-        for i, wav in enumerate(prepared):
-            padded[i, : len(wav)] = wav
+                max_len = max(len(wav) for wav in prepared)
+                padded = np.zeros((len(prepared), max_len), dtype=np.float32)
+                for i, wav in enumerate(prepared):
+                    padded[i, : len(wav)] = wav
 
-        tensor = torch.tensor(padded, device=self.device)
-        with torch.no_grad():
-            embeds = model(wavs=tensor)
+                tensor = torch.tensor(padded, device=self.device)
+                with torch.no_grad():
+                    embeds = model(wavs=tensor)
 
-        if isinstance(embeds, torch.Tensor):
-            arr = embeds.detach().cpu().numpy()
-        else:
-            arr = np.asarray(embeds, dtype=np.float32)
+                if isinstance(embeds, torch.Tensor):
+                    arr = embeds.detach().cpu().numpy()
+                else:
+                    arr = np.asarray(embeds, dtype=np.float32)
 
-        if arr.ndim == 1:
-            arr = arr.reshape(1, -1)
-        return arr.astype(np.float32)
+                if arr.ndim == 1:
+                    arr = arr.reshape(1, -1)
+                return arr.astype(np.float32)
+            finally:
+                self._after_use()
 
     def embed_text(self, text: str) -> np.ndarray:
-        try:
-            vectors = self.embed_text_batch([text])
-            return vectors[0]
-        finally:
-            self._after_use()
+        vectors = self.embed_text_batch([text])
+        return vectors[0]
 
     def embed_text_batch(self, texts: list[str]) -> np.ndarray:
         if not texts:
             return np.empty((0, EMBEDDING_DIM), dtype=np.float32)
 
-        try:
-            model = self._ensure_model()
-            import torch
+        with self._lock:
+            try:
+                model = self._ensure_model()
+                import torch
 
-            with torch.no_grad():
-                embeds = model(texts=texts)
+                with torch.no_grad():
+                    embeds = model(texts=texts)
 
-            if isinstance(embeds, torch.Tensor):
-                arr = embeds.detach().cpu().numpy()
-            else:
-                arr = np.asarray(embeds, dtype=np.float32)
+                if isinstance(embeds, torch.Tensor):
+                    arr = embeds.detach().cpu().numpy()
+                else:
+                    arr = np.asarray(embeds, dtype=np.float32)
 
-            if arr.ndim == 1:
-                arr = arr.reshape(1, -1)
-            return arr.astype(np.float32)
-        finally:
-            self._after_use()
+                if arr.ndim == 1:
+                    arr = arr.reshape(1, -1)
+                return arr.astype(np.float32)
+            finally:
+                self._after_use()

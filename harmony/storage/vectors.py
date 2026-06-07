@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from harmony.config import Config
+from harmony.models import validate_track_id
 
 
 class VectorStore:
@@ -20,10 +21,22 @@ class VectorStore:
         return path
 
     def track_vector_path(self, track_id: str, embedding_version: str | None = None) -> Path:
-        return self.version_dir(embedding_version) / "tracks" / f"{track_id}.npy"
+        safe_id = validate_track_id(track_id)
+        base = self.version_dir(embedding_version) / "tracks"
+        path = base / f"{safe_id}.npy"
+        resolved = path.resolve()
+        if not resolved.is_relative_to(base.resolve()):
+            raise ValueError(f"Invalid track vector path for track_id: {track_id}")
+        return path
 
     def chunk_vectors_path(self, track_id: str, embedding_version: str | None = None) -> Path:
-        return self.version_dir(embedding_version) / "chunks" / f"{track_id}.npy"
+        safe_id = validate_track_id(track_id)
+        base = self.version_dir(embedding_version) / "chunks"
+        path = base / f"{safe_id}.npy"
+        resolved = path.resolve()
+        if not resolved.is_relative_to(base.resolve()):
+            raise ValueError(f"Invalid chunk vector path for track_id: {track_id}")
+        return path
 
     def save_track_vector(
         self,
