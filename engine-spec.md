@@ -669,18 +669,27 @@ Avoids re-tokenizing hot prompts in UI loops.
 
 Base path: `/v1`. JSON in/out. OpenAPI spec generated from route definitions.
 
-### 9.1 Indexing
+### 9.0 Health and readiness
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/index` | Start sync/reconcile job `{ paths?, full_rescan? }` |
-| `GET` | `/index/{job_id}` | Job status + progress + latest `SyncReport` |
-| `DELETE` | `/index/{job_id}` | Cancel running job |
-| `GET` | `/library/stats` | Track count by status, chunk count, index health, embedding version |
-| `GET` | `/library/tracks` | Paginated track list + metadata |
-| `GET` | `/library/tracks/{track_id}` | Single track + chunk map + all known paths |
-| `GET` | `/library/sync` | History of sync runs and reports |
-| `POST` | `/library/purge` | Remove `removed` tracks and orphan vectors from disk |
+| `GET` | `/health` | Liveness (no `/v1` prefix) |
+| `GET` | `/ready` | Model loaded + index size > 0 |
+| `POST` | `/init` | Initialize data directory and schema |
+
+### 9.1 Indexing and library
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/index` | Sync/reconcile `{ paths?, full_rescan?, embed?, prune?, reembed?, async? }` — sync returns `SyncReport`; `async: true` returns `{ job_id, status }` |
+| `GET` | `/index/jobs/{job_id}` | Job status + progress + `SyncReport` when complete |
+| `GET` | `/library/stats` | Track count by status, index size, embedding version, model status |
+| `GET` | `/library/tracks` | Paginated track list (`offset`, `limit`, `status`) |
+| `GET` | `/library/tracks/{track_id}` | Single track + known paths |
+| `GET` | `/library/sync` | History of sync runs |
+| `POST` | `/library/purge` | `{ missing?, removed?, orphans? }` |
+
+**Implemented:** above routes. **Planned:** `DELETE /index/jobs/{job_id}` (cancel).
 
 ### 9.2 Search
 
@@ -688,10 +697,10 @@ Base path: `/v1`. JSON in/out. OpenAPI spec generated from route definitions.
 |--------|------|-------------|
 | `POST` | `/search/text` | Text query |
 | `POST` | `/search/track` | Seed track query |
-| `POST` | `/search/audio` | Multipart audio upload |
-| `POST` | `/search/blend` | Weighted multi-term query |
-| `POST` | `/search/vector` | Raw vector (base64 float32) |
-| `POST` | `/search/chunks` | Chunk-level results |
+| `POST` | `/search/audio` | Multipart audio upload *(planned)* |
+| `POST` | `/search/blend` | Weighted multi-term query *(planned)* |
+| `POST` | `/search/vector` | Raw vector (base64 float32) *(planned)* |
+| `POST` | `/search/chunks` | Chunk-level results *(planned)* |
 
 ### 9.3 Embeddings
 
@@ -752,16 +761,17 @@ Content-Type: application/json
 Binary name: `harmony`
 
 ```
-harmony init [--data-dir PATH]
-harmony index [paths...] [--full] [--watch]
-harmony status                              # library stats + last sync report
-harmony sync-history [--limit 10]           # past reconciliation reports
-harmony search text <query> [--k 50] [--json]
-harmony search track <track_id> [--chunk <chunk_id>] [--k 50]
-harmony search blend --text "ambient:0.6" --track <id>:0.4
+harmony init [--data-dir PATH] [--local]
+harmony index [paths...] [--full] [--watch] [--prune] [--reembed] [--async] [--local]
+harmony status [--local]                    # library stats
+harmony sync-history [--limit 10] [--local] # past reconciliation reports
+harmony search text <query> [--k 50] [--json] [--local]
+harmony search track <track_id> [--k 50]     # planned
 harmony serve [--host] [--port] [--data-dir]
-harmony purge [--removed] [--orphans]
+harmony purge [--missing] [--removed] [--orphans] [--local]
 ```
+
+CLI commands auto-detect a running `harmony serve` at `HARMONY_API_URL` or `http://127.0.0.1:8000`. Use `--local` to force in-process `Engine`.
 
 `harmony index` prints a `SyncReport` on completion (added, moved, reembedded, etc.).  
 `harmony search` prints human-readable tables by default; `--json` for scripting.

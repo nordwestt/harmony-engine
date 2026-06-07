@@ -98,6 +98,21 @@ CREATE TABLE IF NOT EXISTS sync_runs (
     duration_ms INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS index_jobs (
+    job_id TEXT PRIMARY KEY,
+    status TEXT NOT NULL,
+    phase TEXT,
+    embedded INTEGER NOT NULL DEFAULT 0,
+    total_pending INTEGER NOT NULL DEFAULT 0,
+    failed INTEGER NOT NULL DEFAULT 0,
+    error TEXT,
+    report_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS query_cache (
     query_id TEXT PRIMARY KEY,
     text TEXT NOT NULL UNIQUE,

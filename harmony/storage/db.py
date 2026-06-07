@@ -6,7 +6,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 _SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
@@ -24,7 +24,7 @@ def connect(db_path: Path | str) -> Any:
 
         return turso.connect(str(db_path))
     except ImportError:
-        conn = sqlite3.connect(str(db_path))
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn
@@ -40,7 +40,8 @@ def migrate(conn: Any) -> None:
         return
 
     if current < SCHEMA_VERSION:
-        # Future migrations go here.
+        if current < 2:
+            _migrate_v2(conn)
         _set_schema_version(conn, SCHEMA_VERSION)
         conn.commit()
 
@@ -63,3 +64,24 @@ def _set_schema_version(conn: Any, version: int) -> None:
 def _apply_schema(conn: Any) -> None:
     sql = _SCHEMA_PATH.read_text(encoding="utf-8")
     conn.executescript(sql)
+
+
+def _migrate_v2(conn: Any) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS index_jobs (
+            job_id TEXT PRIMARY KEY,
+            status TEXT NOT NULL,
+            phase TEXT,
+            embedded INTEGER NOT NULL DEFAULT 0,
+            total_pending INTEGER NOT NULL DEFAULT 0,
+            failed INTEGER NOT NULL DEFAULT 0,
+            error TEXT,
+            report_json TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            started_at TEXT,
+            finished_at TEXT
+        )
+        """
+    )

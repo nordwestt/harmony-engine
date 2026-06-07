@@ -55,7 +55,9 @@ class TrackEmbeddingPipeline:
             raise ValueError(f"No embeddable audio in {track.primary_path}")
 
         chunk_waveforms = [c[0] for c in chunks]
-        with self.embedder.session():  # type: ignore[attr-defined]
+        session_factory = getattr(self.embedder, "session", None)
+        outer = session_factory() if session_factory else nullcontext()
+        with outer:
             chunk_embeddings = self._embed_chunks_batched(chunk_waveforms, sample_rate)
         track_vector = mean_pool(chunk_embeddings)
 
@@ -69,20 +71,21 @@ class TrackEmbeddingPipeline:
         *,
         reembed: bool = False,
         on_progress: Callable[[int, int, str], None] | None = None,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, list[str]]:
         """Embed all active tracks missing vectors at the current version.
 
-        Returns (embedded_count, failed_count).
+        Returns (embedded_count, failed_count, embedded_track_ids).
         """
         pending = self._tracks_to_embed(reembed=reembed)
         if not pending:
-            return 0, 0
+            return 0, 0, []
 
         total = len(pending)
         print(f"Embedding {total} track(s)…", file=sys.stderr)
 
         embedded = 0
         failed = 0
+        embedded_ids: list[str] = []
         iterator: object = pending
 
         try:
@@ -101,6 +104,7 @@ class TrackEmbeddingPipeline:
                 try:
                     self.embed_track(track)
                     embedded += 1
+                    embedded_ids.append(track.track_id)
                     logger.info("Embedded %s — %s", track.artist, track.title)
                     if on_progress:
                         on_progress(i, total, label)
@@ -110,7 +114,7 @@ class TrackEmbeddingPipeline:
                     self.store.mark_track_failed(track.track_id, utcnow())
                     print(f"Failed: {label} ({track.primary_path})", file=sys.stderr)
 
-        return embedded, failed
+        return embedded, failed, embedded_ids
 
     def _tracks_to_embed(self, *, reembed: bool) -> list[Track]:
         version = self.config.embedding_version()

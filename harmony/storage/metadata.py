@@ -120,6 +120,129 @@ class MetadataStore:
         ).fetchall()
         return [self._row_to_track(r) for r in rows]
 
+    def list_tracks(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        status: str | None = None,
+    ) -> tuple[list[Track], int]:
+        if status:
+            count_row = self.conn.execute(
+                "SELECT COUNT(*) FROM tracks WHERE status = ?",
+                (status,),
+            ).fetchone()
+            rows = self.conn.execute(
+                """
+                SELECT * FROM tracks WHERE status = ?
+                ORDER BY artist, album, title
+                LIMIT ? OFFSET ?
+                """,
+                (status, limit, offset),
+            ).fetchall()
+        else:
+            count_row = self.conn.execute("SELECT COUNT(*) FROM tracks").fetchone()
+            rows = self.conn.execute(
+                """
+                SELECT * FROM tracks
+                ORDER BY artist, album, title
+                LIMIT ? OFFSET ?
+                """,
+                (limit, offset),
+            ).fetchall()
+        total = int(count_row[0])
+        return [self._row_to_track(r) for r in rows], total
+
+    def list_sync_runs(self, *, limit: int = 10) -> list[dict[str, Any]]:
+        rows = self.conn.execute(
+            """
+            SELECT * FROM sync_runs
+            ORDER BY started_at DESC
+            LIMIT ?
+            """,
+            (limit,),
+        ).fetchall()
+        result: list[dict[str, Any]] = []
+        for row in rows:
+            keys = row.keys() if hasattr(row, "keys") else None
+            get = (lambda k: row[k]) if keys else (lambda k, i: row[i])
+            if keys:
+                result.append({k: get(k) for k in keys})
+            else:
+                cols = [
+                    "run_id", "started_at", "finished_at", "added", "updated_metadata",
+                    "moved", "duplicates_found", "missing", "removed", "reembedded",
+                    "failed", "skipped", "duration_ms",
+                ]
+                result.append({cols[i]: row[i] for i in range(len(cols))})
+        return result
+
+    def upsert_index_job(
+        self,
+        *,
+        job_id: str,
+        status: str,
+        phase: str | None,
+        embedded: int,
+        total_pending: int,
+        failed: int,
+        error: str | None,
+        report_json: str | None,
+        created_at: str,
+        updated_at: str,
+        started_at: str | None,
+        finished_at: str | None,
+    ) -> None:
+        self.conn.execute(
+            """
+            INSERT INTO index_jobs (
+                job_id, status, phase, embedded, total_pending, failed,
+                error, report_json, created_at, updated_at, started_at, finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(job_id) DO UPDATE SET
+                status = excluded.status,
+                phase = excluded.phase,
+                embedded = excluded.embedded,
+                total_pending = excluded.total_pending,
+                failed = excluded.failed,
+                error = excluded.error,
+                report_json = excluded.report_json,
+                updated_at = excluded.updated_at,
+                started_at = excluded.started_at,
+                finished_at = excluded.finished_at
+            """,
+            (
+                job_id,
+                status,
+                phase,
+                embedded,
+                total_pending,
+                failed,
+                error,
+                report_json,
+                created_at,
+                updated_at,
+                started_at,
+                finished_at,
+            ),
+        )
+        self.conn.commit()
+
+    def get_index_job(self, job_id: str) -> dict[str, Any] | None:
+        row = self.conn.execute(
+            "SELECT * FROM index_jobs WHERE job_id = ?",
+            (job_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        if hasattr(row, "keys"):
+            return {k: row[k] for k in row.keys()}
+        cols = [
+            "job_id", "status", "phase", "embedded", "total_pending", "failed",
+            "error", "report_json", "created_at", "updated_at", "started_at", "finished_at",
+        ]
+        return {cols[i]: row[i] for i in range(len(cols))}
+
     def count_embedded_tracks(self) -> int:
         version = self.config.embedding_version()
         row = self.conn.execute(

@@ -9,8 +9,29 @@ from pathlib import Path
 import click
 
 from harmony import __version__
-from harmony.client import default_api_url, search_text as api_search_text
+from harmony.client import (
+    detect_api_url,
+    index_library,
+    library_stats,
+    purge_library,
+    search_text as api_search_text,
+    sync_history as api_sync_history,
+    wait_for_index_job,
+)
 from harmony.engine import Engine
+
+
+def _resolve_api(local: bool) -> str | None:
+    if local:
+        return None
+    return detect_api_url()
+
+
+def _api_hint() -> None:
+    click.echo(
+        "Tip: start `harmony serve` for a shared engine (no restart after indexing).",
+        err=True,
+    )
 
 
 @click.group()
@@ -29,12 +50,22 @@ def cli(ctx: click.Context, data_dir: Path | None) -> None:
 
 
 @cli.command()
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
-def init(ctx: click.Context) -> None:
+def init(ctx: click.Context, local: bool) -> None:
     """Initialize data directory and database."""
+    api_url = _resolve_api(local)
+    if api_url:
+        from harmony.client import init_library
+
+        result = init_library(api_url)
+        click.echo(f"Initialized Harmony at {result['data_dir']}")
+        return
+
     engine = Engine(ctx.obj["data_dir"])
     engine.init()
     click.echo(f"Initialized Harmony at {engine.config.data_dir}")
+    engine.close()
 
 
 @cli.command()
@@ -52,6 +83,13 @@ def init(ctx: click.Context) -> None:
     is_flag=True,
     help="Re-embed all tracks even if already indexed",
 )
+@click.option(
+    "--async",
+    "run_async",
+    is_flag=True,
+    help="Run indexing as a background API job (poll until complete)",
+)
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
 def index(
     ctx: click.Context,
@@ -61,15 +99,62 @@ def index(
     no_embed: bool,
     prune: bool,
     reembed: bool,
+    run_async: bool,
+    local: bool,
 ) -> None:
     """Scan and reconcile a music library."""
     if watch:
         click.echo("Watch mode is not yet implemented.", err=True)
         sys.exit(1)
 
-    engine = Engine(ctx.obj["data_dir"])
+    api_url = _resolve_api(local)
     path_strs = [str(p) for p in paths] if paths else None
 
+    if api_url:
+        try:
+            if not no_embed:
+                click.echo("Scanning library via API…", err=True)
+            payload = index_library(
+                api_url,
+                paths=path_strs,
+                full_rescan=full,
+                embed=not no_embed,
+                prune=prune,
+                reembed=reembed,
+                async_=run_async,
+            )
+            if run_async:
+                job_id = payload["job_id"]
+                click.echo(f"Index job started: {job_id}", err=True)
+
+                def on_progress(status: dict) -> None:
+                    phase = status.get("phase") or status.get("status")
+                    embedded = status.get("embedded", 0)
+                    total = status.get("total_pending", 0)
+                    if total:
+                        click.echo(f"  {phase}: {embedded}/{total}", err=True)
+
+                payload = wait_for_index_job(api_url, job_id, on_progress=on_progress)
+                report = payload.get("report") or {}
+            else:
+                report = payload
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+
+        click.echo(f"Added:      {report.get('added', 0)}")
+        click.echo(f"Moved:      {report.get('moved', 0)}")
+        click.echo(f"Skipped:    {report.get('skipped', 0)}")
+        click.echo(f"Embedded:   {report.get('embedded', 0)}")
+        click.echo(f"Purged:     {report.get('purged', 0)}")
+        click.echo(f"Failed:     {report.get('failed', 0)}")
+        click.echo(f"Missing:    {report.get('missing', 0)}")
+        click.echo(f"Removed:    {report.get('removed', 0)}")
+        click.echo(f"Duration:   {report.get('duration_ms', 0)}ms")
+        return
+
+    _api_hint()
+    engine = Engine(ctx.obj["data_dir"])
     try:
         if not no_embed:
             click.echo("Scanning library…", err=True)
@@ -98,9 +183,21 @@ def index(
 
 
 @cli.command()
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
-def status(ctx: click.Context) -> None:
+def status(ctx: click.Context, local: bool) -> None:
     """Show library statistics."""
+    api_url = _resolve_api(local)
+    if api_url:
+        try:
+            stats = library_stats(api_url)
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        for key, value in stats.items():
+            click.echo(f"{key}: {value}")
+        return
+
     engine = Engine(ctx.obj["data_dir"])
     try:
         stats = engine.stats()
@@ -113,19 +210,33 @@ def status(ctx: click.Context) -> None:
 
 @cli.command("sync-history")
 @click.option("--limit", default=10, show_default=True)
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
-def sync_history(ctx: click.Context, limit: int) -> None:
+def sync_history(ctx: click.Context, limit: int, local: bool) -> None:
     """Show recent library sync reports."""
+    api_url = _resolve_api(local)
+    if api_url:
+        try:
+            payload = api_sync_history(api_url, limit=limit)
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        rows = payload.get("items", [])
+        if not rows:
+            click.echo("No sync runs recorded yet.")
+            return
+        for row in rows:
+            click.echo(
+                f"{row['started_at']}  "
+                f"+{row['added']} moved={row['moved']} "
+                f"missing={row['missing']} removed={row['removed']} "
+                f"({row['duration_ms']}ms)"
+            )
+        return
+
     engine = Engine(ctx.obj["data_dir"])
     try:
-        rows = engine.store.conn.execute(
-            """
-            SELECT * FROM sync_runs
-            ORDER BY started_at DESC
-            LIMIT ?
-            """,
-            (limit,),
-        ).fetchall()
+        rows = engine.list_sync_history(limit=limit)
     finally:
         engine.close()
 
@@ -134,14 +245,11 @@ def sync_history(ctx: click.Context, limit: int) -> None:
         return
 
     for row in rows:
-        def col(name: str, idx: int) -> object:
-            return row[name] if hasattr(row, "keys") else row[idx]
-
         click.echo(
-            f"{col('started_at', 1)}  "
-            f"+{col('added', 3)} moved={col('moved', 5)} "
-            f"missing={col('missing', 7)} removed={col('removed', 8)} "
-            f"({col('duration_ms', 12)}ms)"
+            f"{row['started_at']}  "
+            f"+{row['added']} moved={row['moved']} "
+            f"missing={row['missing']} removed={row['removed']} "
+            f"({row['duration_ms']}ms)"
         )
 
 
@@ -158,8 +266,9 @@ def search() -> None:
     "--api",
     "api_url",
     default=None,
-    help="Use a running harmony serve API (default: $HARMONY_API_URL)",
+    help="Use a running harmony serve API (overrides auto-detect)",
 )
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
 def search_text(
     ctx: click.Context,
@@ -167,9 +276,13 @@ def search_text(
     k: int,
     as_json: bool,
     api_url: str | None,
+    local: bool,
 ) -> None:
     """Search by natural language query."""
-    api_url = api_url or default_api_url()
+    if local:
+        api_url = None
+    else:
+        api_url = api_url or detect_api_url()
 
     if api_url:
         try:
@@ -180,6 +293,7 @@ def search_text(
         _print_search_payload(payload, as_json=as_json)
         return
 
+    _api_hint()
     engine = Engine(ctx.obj["data_dir"])
     try:
         result = engine.search_by_text(query, k=k)
@@ -264,7 +378,7 @@ def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
     click.echo(f"Model keep-alive: {policy}", err=True)
     click.echo(
         f"API listening on http://{host}:{port}  "
-        f"(set HARMONY_API_URL=http://{host}:{port} for fast CLI search)",
+        f"(CLI auto-detects this server; or set HARMONY_API_URL=http://{host}:{port})",
         err=True,
     )
 
@@ -283,12 +397,33 @@ def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
 )
 @click.option("--removed", is_flag=True, help="Delete tracks already marked removed")
 @click.option("--orphans", is_flag=True, help="Delete orphan vector files on disk")
+@click.option("--local", is_flag=True, help="Run in-process instead of via API")
 @click.pass_context
-def purge(ctx: click.Context, missing: bool, removed: bool, orphans: bool) -> None:
+def purge(ctx: click.Context, missing: bool, removed: bool, orphans: bool, local: bool) -> None:
     """Purge missing/removed tracks and orphan data."""
     if not missing and not removed and not orphans:
         click.echo("Specify --missing, --removed, and/or --orphans", err=True)
         sys.exit(1)
+
+    api_url = _resolve_api(local)
+    if api_url:
+        try:
+            counts = purge_library(
+                api_url,
+                missing=missing,
+                removed=removed,
+                orphans=orphans,
+            )
+        except RuntimeError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(1)
+        if missing:
+            click.echo(f"Purged missing: {counts.get('missing', 0)}")
+        if removed:
+            click.echo(f"Purged removed: {counts.get('removed', 0)}")
+        if orphans:
+            click.echo(f"Purged orphans: {counts.get('orphans', 0)}")
+        return
 
     engine = Engine(ctx.obj["data_dir"])
     try:

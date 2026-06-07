@@ -35,10 +35,10 @@ def parse_keep_alive(value: str | int | bool | None) -> KeepAlivePolicy:
         return KeepAlivePolicy(mode="forever" if value else "immediate")
 
     if isinstance(value, int):
+        if value == -1:
+            return KeepAlivePolicy(mode="forever")
         if value <= 0:
             return KeepAlivePolicy(mode="immediate")
-        if value < 0:
-            return KeepAlivePolicy(mode="forever")
         return KeepAlivePolicy(mode="timed", minutes=value)
 
     text = str(value).strip().lower()

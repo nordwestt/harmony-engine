@@ -21,32 +21,25 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 Uses [uv](https://docs.astral.sh/uv/).
 
-```bash
-uv sync --extra db --extra embed --group dev
+**Recommended:** run the server first; the CLI auto-detects it and indexes/search without restart.
 
+```bash
+uv sync --extra db --extra embed --extra api --group dev
+
+# terminal 1 — the engine
+uv run harmony serve
+
+# terminal 2 — everything hits the API
 uv run harmony init
-uv run harmony index ~/Music     # scan + embed (downloads model on first run)
-uv run harmony index ~/Music --prune   # also delete tracks removed from disk
-uv run harmony index ~/Music --reembed # force re-embed all tracks
+uv run harmony index ~/Music          # scan + embed (downloads model on first run)
+uv run harmony index ~/Music --prune  # also delete tracks removed from disk
 uv run harmony status
 uv run harmony search text "melancholic piano" --k 10
 ```
 
-### Fast repeated search (model stays loaded)
+Set `HARMONY_API_URL` explicitly if the server is not on `127.0.0.1:8000`. Use `--local` on any command for in-process mode (CI, no server).
 
-Each standalone `harmony search` reloads the model. For interactive use, run the API server:
-
-```bash
-# terminal 1
-uv sync --extra api --extra embed
-uv run harmony serve
-
-# terminal 2
-export HARMONY_API_URL=http://127.0.0.1:8000
-uv run harmony search text "melancholic piano" --k 10
-```
-
-See [docs/model-cache.md](docs/model-cache.md) for `keep_alive` settings (`immediate`, `30` minutes, `forever`).
+See [docs/server.md](docs/server.md) for the full API and async indexing. See [docs/model-cache.md](docs/model-cache.md) for `keep_alive` settings.
 
 Metadata-only rescan (no GPU work):
 

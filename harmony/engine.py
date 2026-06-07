@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from harmony.config import Config
@@ -68,6 +69,7 @@ class Engine:
         embed: bool = True,
         prune: bool = False,
         reembed: bool = False,
+        on_embed_progress: Callable[[int, int, str], None] | None = None,
     ) -> SyncReport:
         """Scan filesystem, reconcile metadata, embed new/changed tracks, rebuild index."""
         scan_paths = paths or self.config.filesystem.paths
@@ -80,18 +82,30 @@ class Engine:
         if prune:
             purged = self._get_purge().prune_missing()
             report.purged = len(purged)
-            if purged:
-                self._get_index_manager().rebuild()
 
+        embedded_ids: list[str] = []
         if embed:
-            embedded, failed = self._get_pipeline().embed_pending(reembed=reembed)
+            embedded, failed, embedded_ids = self._get_pipeline().embed_pending(
+                reembed=reembed,
+                on_progress=on_embed_progress,
+            )
             report.embedded = embedded
             report.failed += failed
 
-            if embedded > 0 or report.purged > 0:
+        if reembed or report.purged > 0:
+            if embedded_ids or report.purged > 0:
                 self._get_index_manager().rebuild()
-            else:
-                self._get_index_manager().ensure_loaded()
+                self._invalidate_search()
+        elif embedded_ids:
+            version = self.config.embedding_version()
+            manager = self._get_index_manager()
+            for track_id in embedded_ids:
+                vector = self.vectors.load_track_vector(track_id, version)
+                if vector is not None:
+                    manager.upsert_track(track_id, vector)
+            self._invalidate_search()
+        else:
+            self._get_index_manager().ensure_loaded()
 
         return report
 
@@ -115,8 +129,75 @@ class Engine:
 
         if counts["missing"] or counts["removed"]:
             self._get_index_manager().rebuild()
+            self._invalidate_search()
 
         return counts
+
+    def list_tracks(
+        self,
+        *,
+        offset: int = 0,
+        limit: int = 50,
+        status: str | None = None,
+    ) -> tuple[list[dict[str, object]], int]:
+        tracks, total = self.store.list_tracks(offset=offset, limit=limit, status=status)
+        items = [
+            {
+                "track_id": t.track_id,
+                "title": t.title,
+                "artist": t.artist,
+                "album": t.album,
+                "status": t.status.value,
+                "primary_path": t.primary_path,
+                "duration_ms": t.duration_ms,
+                "embedding_version": t.embedding_version,
+                "indexed_at": t.indexed_at.isoformat() if t.indexed_at else None,
+            }
+            for t in tracks
+        ]
+        return items, total
+
+    def get_track_detail(self, track_id: str) -> dict[str, object] | None:
+        track = self.store.get_track(track_id)
+        if track is None:
+            return None
+        return {
+            "track": {
+                "track_id": track.track_id,
+                "title": track.title,
+                "artist": track.artist,
+                "album": track.album,
+                "status": track.status.value,
+                "primary_path": track.primary_path,
+                "duration_ms": track.duration_ms,
+                "embedding_version": track.embedding_version,
+                "indexed_at": track.indexed_at.isoformat() if track.indexed_at else None,
+            },
+            "locations": [
+                {
+                    "location_id": loc.location_id,
+                    "path": loc.path,
+                    "is_primary": loc.is_primary,
+                    "first_seen_at": loc.first_seen_at.isoformat(),
+                    "last_seen_at": loc.last_seen_at.isoformat(),
+                }
+                for loc in track.locations
+            ],
+        }
+
+    def list_sync_history(self, *, limit: int = 10) -> list[dict[str, object]]:
+        return self.store.list_sync_runs(limit=limit)
+
+    def is_ready(self) -> dict[str, object]:
+        model = self.model_status()
+        index_size = self._get_index_manager().ensure_loaded().size
+        embedded = self.store.count_embedded_tracks()
+        return {
+            "ready": bool(model["loaded"]) and index_size > 0,
+            "model_loaded": bool(model["loaded"]),
+            "index_size": index_size,
+            "tracks_embedded": embedded,
+        }
 
     def stats(self) -> dict[str, int | str]:
         """Return library statistics."""
@@ -168,7 +249,9 @@ class Engine:
 
     def close(self) -> None:
         if self._embedder is not None:
-            self._embedder.unload()
+            unload = getattr(self._embedder, "unload", None)
+            if unload is not None:
+                unload()
         if self._store is not None:
             self._store.close()
 
@@ -197,13 +280,16 @@ class Engine:
             self._purge = LibraryPurge(self.config, self.store, self.vectors)
         return self._purge
 
+    def _invalidate_search(self) -> None:
+        self._search = None
+
     def _get_search(self) -> SearchEngine:
         if self._search is None:
             self._search = SearchEngine(
                 self.config,
                 self.store,
                 self._get_embedder(),
-                self._get_index_manager().ensure_loaded(),
+                lambda: self._get_index_manager().ensure_loaded(),
                 self.vectors,
             )
         return self._search

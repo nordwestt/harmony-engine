@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 
 from harmony.config import Config
 from harmony.embedding.base import Embedder
@@ -19,14 +20,17 @@ class SearchEngine:
         config: Config,
         store: MetadataStore,
         embedder: Embedder,
-        track_index: IndexBackend,
+        index_provider: Callable[[], IndexBackend],
         vectors: VectorStore,
     ) -> None:
         self.config = config
         self.store = store
         self.embedder = embedder
-        self.track_index = track_index
+        self._index_provider = index_provider
         self.vectors = vectors
+
+    def _get_index(self) -> IndexBackend:
+        return self._index_provider()
 
     def search_by_text(
         self,
@@ -38,13 +42,14 @@ class SearchEngine:
         k = k or self.config.retrieval.default_k
         t0 = time.perf_counter()
 
-        if self.track_index.size == 0:
+        track_index = self._get_index()
+        if track_index.size == 0:
             raise RuntimeError(
                 "No embedded tracks in the index. Run: harmony index /path/to/music"
             )
 
         vector = self.embedder.embed_text(query)
-        ids, scores = self.track_index.search(vector, k=k * 2)
+        ids, scores = track_index.search(vector, k=k * 2)
 
         items = self._build_results(ids, scores, k=k, filters=filters)
         embedded = self.store.count_embedded_tracks()
@@ -65,7 +70,8 @@ class SearchEngine:
         k = k or self.config.retrieval.default_k
         t0 = time.perf_counter()
 
-        if self.track_index.size == 0:
+        track_index = self._get_index()
+        if track_index.size == 0:
             raise RuntimeError(
                 "No embedded tracks in the index. Run: harmony index /path/to/music"
             )
@@ -74,7 +80,7 @@ class SearchEngine:
         if vector is None:
             raise ValueError(f"No embedding stored for track {track_id}")
 
-        ids, scores = self.track_index.search(vector, k=k + 1)
+        ids, scores = track_index.search(vector, k=k + 1)
         items = self._build_results(
             ids,
             scores,
