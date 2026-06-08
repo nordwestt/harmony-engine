@@ -635,6 +635,7 @@ all = [
     { name = "librosa" },
     { name = "muq" },
     { name = "mypy" },
+    { name = "nnaudio" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "pyturso" },
@@ -675,6 +676,7 @@ embed = [
 ]
 embed-clamp3 = [
     { name = "librosa" },
+    { name = "nnaudio" },
     { name = "soundfile" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -715,6 +717,7 @@ requires-dist = [
     { name = "librosa", marker = "extra == 'embed'", specifier = ">=0.10" },
     { name = "muq", marker = "extra == 'embed-muq'", specifier = ">=0.1.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
+    { name = "nnaudio", marker = "extra == 'embed-clamp3'", specifier = ">=0.3.3" },
     { name = "numpy", specifier = ">=1.26" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1" },

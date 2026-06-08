@@ -101,7 +101,8 @@ class Clamp3Embedder:
             from huggingface_hub import hf_hub_download
         except ImportError as e:
             raise ImportError(
-                "CLaMP3 requires optional dependencies. "
+                "CLaMP3 requires optional dependencies "
+                f"({e.name or e}). "
                 "Install with: uv sync --extra embed --extra embed-clamp3"
             ) from e
 
@@ -190,7 +191,8 @@ class Clamp3Embedder:
                 )
             except ImportError as e:
                 raise ImportError(
-                    "CLaMP3 requires optional dependencies. "
+                    "CLaMP3 requires optional dependencies "
+                    f"({e.name or e}). "
                     "Install with: uv sync --extra embed --extra embed-clamp3"
                 ) from e
 
