@@ -1,6 +1,6 @@
 # Model keep-alive
 
-The default embedding model (MuQ-MuLan) is ~5 GB of weights. Loading it takes tens of seconds. Harmony lets you control how long the embedding model stays in memory **within a running process**.
+The default embedding model (CLaMP3 SAAS + MERT + XLM-R) is several GB of weights. Loading it takes tens of seconds. Harmony lets you control how long the embedding model stays in memory **within a running process**.
 
 ## Why each CLI search feels slow
 
@@ -13,7 +13,7 @@ For interactive searching, use **`harmony serve`** and point the CLI at the API.
 Terminal 1 — start the server (loads model once):
 
 ```bash
-uv sync --extra api --extra embed --extra embed-muq
+uv sync --extra api --extra embed --extra embed-clamp3
 uv run harmony serve
 ```
 

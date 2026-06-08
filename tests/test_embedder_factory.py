@@ -43,26 +43,26 @@ def test_unknown_backend_dimension_raises() -> None:
         backend_dimension("unknown-model")
 
 
-def test_create_embedder_returns_muq_backend() -> None:
+def test_create_embedder_returns_clamp3_by_default() -> None:
     cfg = Config()
-    embedder = create_embedder(cfg)
-    assert isinstance(embedder, MuQMuLanEmbedder)
-    assert embedder.dimension == 512
-    assert cfg.embedding.dimension == 512
-
-
-def test_create_embedder_returns_clamp3_backend() -> None:
-    cfg = Config()
-    cfg.embedding.model = "clamp3"
     embedder = create_embedder(cfg)
     assert isinstance(embedder, Clamp3Embedder)
     assert embedder.dimension == 768
     assert cfg.embedding.dimension == 768
 
 
+def test_create_embedder_returns_muq_backend() -> None:
+    cfg = Config()
+    cfg.embedding.model = "muq-mulan"
+    embedder = create_embedder(cfg)
+    assert isinstance(embedder, MuQMuLanEmbedder)
+    assert embedder.dimension == 512
+    assert cfg.embedding.dimension == 512
+
+
 def test_effective_dimension_without_explicit_override() -> None:
     cfg = Config()
-    assert cfg.embedding.effective_dimension() == 512
+    assert cfg.embedding.effective_dimension() == 768
 
 
 def test_fake_embedder_satisfies_protocol() -> None:

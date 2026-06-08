@@ -35,8 +35,8 @@ class DatabaseConfig:
 
 @dataclass
 class EmbeddingConfig:
-    model: str = "muq-mulan"
-    checkpoint: str = "OpenMuQ/MuQ-MuLan-large"
+    model: str = "clamp3"
+    checkpoint: str = ""
     device: str = "auto"
     batch_size: int = 16
     dimension: int | None = None

@@ -24,7 +24,7 @@ Consumers of this engine should never need to touch MuQ-MuLan, FAISS, or audio p
 1. **Embeddings are the product.** Everything else exists to produce, store, and query vectors reliably.
 2. **Chunks are first-class.** Track-level vectors are derived; chunk-level vectors are the source of truth for fine-grained search.
 3. **Persist everything.** A rebuild should only re-embed what changed (file hash, model version, or chunking config).
-4. **Model-agnostic interface.** MuQ-MuLan is the default embedder, but the engine talks in terms of `Embedder`, not a specific checkpoint.
+4. **Model-agnostic interface.** CLaMP3 SAAS is the default embedder, but the engine talks in terms of `Embedder`, not a specific checkpoint.
 5. **Retrieval, not curation.** Return ranked candidates with scores and metadata. Ordering 30 songs into a journey is someone else's job.
 6. **Three surfaces, one core.** The same logic is exposed as a Python library, a CLI, and an HTTP API.
 7. **Self-hosted by default.** No managed services required. Metadata, vectors, and indexes live in a portable `data_dir` you own.
@@ -358,7 +358,7 @@ class Embedder(Protocol):
     def embed_text_batch(self, texts: list[str]) -> np.ndarray: ...
 ```
 
-Backends are registered in `harmony/embedding/factory.py` and selected by `embedding.model` in config. Default implementation: **MuQ-MuLan** (`muq-mulan`) with lazy model load and batching.
+Backends are registered in `harmony/embedding/factory.py` and selected by `embedding.model` in config. Default implementation: **CLaMP3 SAAS** (`clamp3`) with lazy model load and batching. **MuQ-MuLan** (`muq-mulan`) is also available.
 
 ### 6.2 Track embedding derivation
 
@@ -828,7 +828,7 @@ database:
   # no host, port, or credentials — fully local
 
 embedding:
-  model: muq-mulan
+  model: clamp3
   device: auto          # cuda | cpu | auto
   batch_size: 16
   keep_alive: forever   # immediate | minutes (30) | forever

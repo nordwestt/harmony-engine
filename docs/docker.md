@@ -69,7 +69,7 @@ Inside `/data`:
 └── indexes/{version}/
 ```
 
-First index run downloads **OpenMuQ/MuQ-MuLan-large** into `/data/huggingface`. Subsequent restarts reuse the cache.
+On first start (`preload_on_serve: true` by default), the server downloads **CLaMP3** weights into `/data/models/clamp3/` and MERT/XLM-R checkpoints into `/data/huggingface`. Subsequent restarts reuse the cache. No model weights are baked into the image.
 
 ## Environment variables
 
@@ -128,7 +128,7 @@ docker image ls harmony-engine:cuda-local
 
 ## Image size
 
-Images bundle PyTorch and the MuQ-MuLan Python stack, but **not** the model weights (those download to `/data/huggingface` on first index).
+Images bundle PyTorch and the CLaMP3 Python stack, but **not** model weights — those download on first server startup (or first index) into the `harmony-data` volume.
 
 | Image | Typical compressed pull | Notes |
 |-------|-------------------------|-------|

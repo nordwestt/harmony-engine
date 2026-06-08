@@ -8,7 +8,7 @@ For self-hosting with Docker, see [docker.md](docker.md).
 
 ```bash
 # Terminal 1 — start the engine
-uv sync --extra db --extra embed --extra embed-muq --extra api --group dev
+uv sync --extra db --extra embed --extra embed-clamp3 --extra api --group dev
 uv run harmony serve
 
 # Terminal 2 — CLI talks to the server automatically
@@ -26,7 +26,7 @@ export HARMONY_API_URL=http://127.0.0.1:8000
 
 ## Why server-first?
 
-Running `harmony index` in a **separate process** does not update a running server. Each standalone CLI command also reloads the ~5 GB MuQ-MuLan model. With `harmony serve`:
+Running `harmony index` in a **separate process** does not update a running server. Each standalone CLI command also reloads the embedding model. With `harmony serve`:
 
 - Index updates are visible to search **immediately** (no restart)
 - The model stays loaded between requests

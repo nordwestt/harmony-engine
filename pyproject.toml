@@ -10,7 +10,7 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [{ name = "Harmony contributors" }]
-keywords = ["music", "embeddings", "vector-search", "muq-mulan", "self-hosted"]
+keywords = ["music", "embeddings", "vector-search", "clamp3", "muq-mulan", "self-hosted"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -43,7 +43,6 @@ embed-clamp3 = [
     "harmony-engine[embed]",
     "transformers>=4.40",
     "torchaudio>=2.0",
-    "unidecode>=1.3",
     "nnAudio>=0.3.3",
 ]
 index = ["faiss-cpu>=1.7"]

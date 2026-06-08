@@ -66,7 +66,12 @@ class MuQMuLanEmbedder:
         return parse_keep_alive(self._config.embedding.keep_alive)
 
     def _checkpoint(self) -> str:
-        return self._config.embedding.checkpoint or DEFAULT_CHECKPOINT
+        checkpoint = (self._config.embedding.checkpoint or "").strip()
+        if not checkpoint:
+            return DEFAULT_CHECKPOINT
+        if checkpoint.startswith(("sander-wood/", "clamp3")):
+            return DEFAULT_CHECKPOINT
+        return checkpoint
 
     def preload(self) -> None:
         """Load model weights into memory."""

@@ -85,11 +85,23 @@ class Clamp3Embedder:
     def keep_alive_policy(self) -> KeepAlivePolicy:
         return parse_keep_alive(self._config.embedding.keep_alive)
 
-    def _clamp3_checkpoint_path(self) -> Path:
-        checkpoint = self._config.embedding.checkpoint or DEFAULT_CHECKPOINT
+    def _clamp3_repo_id(self) -> str:
+        checkpoint = (self._config.embedding.checkpoint or "").strip()
+        if not checkpoint:
+            return DEFAULT_CHECKPOINT
         path = Path(checkpoint).expanduser()
-        if path.suffix == ".pth" and path.exists():
-            return path
+        if path.suffix == ".pth":
+            return DEFAULT_CHECKPOINT
+        if checkpoint.startswith(("OpenMuQ/", "muq-")):
+            return DEFAULT_CHECKPOINT
+        return checkpoint
+
+    def _clamp3_checkpoint_path(self) -> Path:
+        checkpoint = (self._config.embedding.checkpoint or "").strip()
+        if checkpoint:
+            path = Path(checkpoint).expanduser()
+            if path.suffix == ".pth" and path.exists():
+                return path
 
         cache_dir = self._config.data_dir / "models" / "clamp3"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -106,10 +118,7 @@ class Clamp3Embedder:
                 "Install with: uv sync --extra embed --extra embed-clamp3"
             ) from e
 
-        if "/" in checkpoint and not checkpoint.endswith(".pth"):
-            repo_id = checkpoint
-        else:
-            repo_id = "sander-wood/clamp3"
+        repo_id = self._clamp3_repo_id()
         print(f"Downloading CLaMP3 weights from {repo_id}…", file=sys.stderr)
         downloaded = hf_hub_download(
             repo_id=repo_id,
