@@ -6,17 +6,6 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 
 **Specification:** [engine-spec.md](engine-spec.md)
 
-## Status
-
-**Phase 0** — working today:
-
-- Filesystem scan + content-hash identity + library sync
-- Audio load, resample (24 kHz), chunk, embed (default: CLaMP3)
-- Track vectors persisted to disk + brute-force cosine search
-- `harmony search text "dreamy night drive"`
-
-**Next:** FAISS, chunk-level index, metadata tag extraction (mutagen).
-
 ## Quick start
 
 ### Docker (recommended for self-hosting)
