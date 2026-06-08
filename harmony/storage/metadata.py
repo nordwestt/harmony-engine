@@ -378,9 +378,10 @@ class MetadataStore:
                 """
                 INSERT INTO tracks (
                     track_id, content_hash, status, primary_path,
-                    duration_ms, title, artist, album, embedding_version,
+                    duration_ms, title, artist, album, album_artist,
+                    year, genre, disc_number, track_number, embedding_version,
                     indexed_at, last_seen_at, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
                 """,
                 (
                     track_id,
@@ -391,6 +392,11 @@ class MetadataStore:
                     title,
                     artist,
                     album,
+                    scanned.album_artist,
+                    scanned.year,
+                    scanned.genre,
+                    scanned.disc_number,
+                    scanned.track_number,
                     embedding_version,
                     now_iso,
                     now_iso,
@@ -402,7 +408,9 @@ class MetadataStore:
                 """
                 UPDATE tracks SET
                     status = ?, primary_path = ?, last_seen_at = ?, updated_at = ?,
-                    title = ?, artist = ?, album = ?, duration_ms = ?
+                    title = ?, artist = ?, album = ?, album_artist = ?,
+                    year = ?, genre = ?, disc_number = ?, track_number = ?,
+                    duration_ms = ?
                 WHERE track_id = ?
                 """,
                 (
@@ -413,6 +421,11 @@ class MetadataStore:
                     title,
                     artist,
                     album,
+                    scanned.album_artist,
+                    scanned.year,
+                    scanned.genre,
+                    scanned.disc_number,
+                    scanned.track_number,
                     duration_ms,
                     track_id,
                 ),

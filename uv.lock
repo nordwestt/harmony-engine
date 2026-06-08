@@ -624,6 +624,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
+    { name = "mutagen" },
     { name = "numpy" },
     { name = "pyyaml" },
 ]
@@ -714,6 +715,7 @@ requires-dist = [
     { name = "librosa", marker = "extra == 'audio'", specifier = ">=0.10" },
     { name = "librosa", marker = "extra == 'embed'", specifier = ">=0.10" },
     { name = "muq", marker = "extra == 'embed-muq'", specifier = ">=0.1.0" },
+    { name = "mutagen", specifier = ">=1.47" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.8" },
     { name = "nnaudio", marker = "extra == 'embed-clamp3'", specifier = ">=0.3.3" },
     { name = "numpy", specifier = ">=1.26" },
@@ -1218,6 +1220,15 @@ dependencies = [
     { name = "x-clip" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/3b/b503410bd4eb81e18dd5f39e2a89b5e9edaa85c53c3448c7111c2a656438/muq-0.1.0.tar.gz", hash = "sha256:67ebb47d238e702151253d08e83e2dbbbe89d24c414b5b410d9b3db55c4a6fa8", size = 55811, upload-time = "2024-12-26T15:13:29.517Z" }
+
+[[package]]
+name = "mutagen"
+version = "1.47.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/81/e6/64bc71b74eef4b68e61eb921dcf72dabd9e4ec4af1e11891bbd312ccbb77/mutagen-1.47.0.tar.gz", hash = "sha256:719fadef0a978c31b4cf3c956261b3c58b6948b32023078a2117b1de09f0fc99", size = 1274186, upload-time = "2023-09-03T16:33:33.411Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b0/7a/620f945b96be1f6ee357d211d5bf74ab1b7fe72a9f1525aafbfe3aee6875/mutagen-1.47.0-py3-none-any.whl", hash = "sha256:edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719", size = 194391, upload-time = "2023-09-03T16:33:29.955Z" },
+]
 
 [[package]]
 name = "mypy"

@@ -22,3 +22,5 @@ def test_scan_finds_audio(tmp_path: Path) -> None:
     assert len(files) == 1
     assert files[0].path == str(track.resolve())
     assert files[0].title == "Song"
+    assert files[0].artist == "Artist"
+    assert files[0].album == "Album"

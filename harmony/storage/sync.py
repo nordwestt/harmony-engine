@@ -5,11 +5,35 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from harmony.config import Config
-from harmony.models import ScannedFile, SyncReport, utcnow
+from harmony.models import ScannedFile, SyncReport, Track, utcnow
 from harmony.scanner.base import FilesystemScannerProtocol
 from harmony.storage.metadata import MetadataStore
+
+
+def _resolved_metadata(scanned: ScannedFile) -> tuple[str, str, str, int]:
+    title = scanned.title or Path(scanned.path).stem
+    artist = scanned.artist or "Unknown Artist"
+    album = scanned.album or "Unknown Album"
+    duration_ms = scanned.duration_ms or 0
+    return title, artist, album, duration_ms
+
+
+def _metadata_changed(existing: Track, scanned: ScannedFile) -> bool:
+    title, artist, album, duration_ms = _resolved_metadata(scanned)
+    return (
+        existing.title != title
+        or existing.artist != artist
+        or existing.album != album
+        or existing.album_artist != scanned.album_artist
+        or existing.year != scanned.year
+        or existing.genre != scanned.genre
+        or existing.disc_number != scanned.disc_number
+        or existing.track_number != scanned.track_number
+        or existing.duration_ms != duration_ms
+    )
 
 
 class LibrarySync:
@@ -39,6 +63,8 @@ class LibrarySync:
                     report.added += 1
             elif existing.primary_path != scanned.path:
                 report.moved += 1
+            elif _metadata_changed(existing, scanned):
+                report.updated_metadata += 1
             else:
                 report.skipped += 1
 

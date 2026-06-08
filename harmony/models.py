@@ -102,6 +102,11 @@ class ScannedFile:
     title: str | None = None
     artist: str | None = None
     album: str | None = None
+    album_artist: str | None = None
+    year: int | None = None
+    genre: str | None = None
+    disc_number: int | None = None
+    track_number: int | None = None
     duration_ms: int | None = None
 
 

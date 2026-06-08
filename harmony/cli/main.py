@@ -393,6 +393,7 @@ def search_text(
     for item in result.items:
         click.echo(
             f"{item.score:6.3f}  {item.metadata.artist} — {item.metadata.title}"
+            f"  ({item.metadata.primary_path})"
         )
 
 
@@ -410,6 +411,7 @@ def _print_search_payload(payload: dict, *, as_json: bool) -> None:
         meta = item.get("metadata", {})
         click.echo(
             f"{item['score']:6.3f}  {meta.get('artist', '')} — {meta.get('title', '')}"
+            f"  ({meta.get('primary_path', '')})"
         )
 
 

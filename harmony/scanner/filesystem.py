@@ -10,6 +10,7 @@ from typing import Iterator
 from harmony.config import FilesystemConfig
 from harmony.errors import PathNotAllowedError
 from harmony.models import ScannedFile
+from harmony.scanner.tags import extract_tags
 
 
 class FilesystemScanner:
@@ -43,8 +44,22 @@ class FilesystemScanner:
                     except OSError:
                         continue
 
+                    tags = extract_tags(path)
+
                     if content_hash in seen_hashes:
-                        yield ScannedFile(path=str(path), content_hash=content_hash)
+                        yield ScannedFile(
+                            path=str(path),
+                            content_hash=content_hash,
+                            title=tags.title,
+                            artist=tags.artist,
+                            album=tags.album,
+                            album_artist=tags.album_artist,
+                            year=tags.year,
+                            genre=tags.genre,
+                            disc_number=tags.disc_number,
+                            track_number=tags.track_number,
+                            duration_ms=tags.duration_ms,
+                        )
                         continue
 
                     seen_hashes.add(content_hash)
@@ -54,7 +69,15 @@ class FilesystemScanner:
                         content_hash=content_hash,
                         size_bytes=stat.st_size,
                         mtime=stat.st_mtime,
-                        title=path.stem,
+                        title=tags.title,
+                        artist=tags.artist,
+                        album=tags.album,
+                        album_artist=tags.album_artist,
+                        year=tags.year,
+                        genre=tags.genre,
+                        disc_number=tags.disc_number,
+                        track_number=tags.track_number,
+                        duration_ms=tags.duration_ms,
                     )
 
     def resolve_path(self, path: str) -> Path:
