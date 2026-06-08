@@ -28,17 +28,16 @@ RUN uv python install 3.12 \
     && uv venv --python 3.12 \
     && uv pip install torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cu121 \
-    && uv sync --python 3.12 --extra db --extra embed --extra embed-muq --extra api-minimal --no-dev \
+    && uv sync --python 3.12 --extra db --extra embed --extra embed-clamp3 --extra api-minimal --no-dev \
         --no-install-package torch --no-install-package torchaudio --no-install-package torchvision \
     && uv pip install --reinstall \
         torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cu121 \
     && /app/.venv/bin/python -c "\
 import torch, torchaudio, torchvision; \
-import torchvision.transforms; \
-from harmony.config import Config; \
-from harmony.embedding.factory import create_embedder; \
-create_embedder(Config()); \
+from harmony.embedding.factory import backend_dimension, list_backends; \
+assert 'clamp3' in list_backends(); \
+assert backend_dimension('clamp3') == 768; \
 assert torch.backends.cuda.is_built(); \
 print('pytorch', torch.__version__, 'torchvision', torchvision.__version__)" \
     && find /app/.venv -type d -name __pycache__ -exec rm -rf {} + \
@@ -71,7 +70,7 @@ ENV HF_HOME=/data/huggingface
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -12,6 +12,7 @@ venv/
 
 # Harmony data (local dev)
 data/
+harmony-data/
 *.db
 *.db-journal
 *.faiss

@@ -55,8 +55,16 @@ Harmony auto-detects CUDA when `embedding.device` is `auto` (default).
 
 | Mount | Purpose |
 |-------|---------|
-| `harmony-data` → `/data` | Database, embeddings, search index, config |
+| `$HARMONY_DATA_PATH` → `/data` | Database, embeddings, search index, config, model cache |
 | `$MUSIC_PATH` → `/music` (ro) | Music library for indexing |
+
+Defaults: `./harmony-data` and `./music` in the project directory. For a persistent home-directory store:
+
+```bash
+export HARMONY_DATA_PATH=$HOME/.harmony
+export MUSIC_PATH=~/music
+docker compose up -d
+```
 
 Inside `/data`:
 
@@ -69,12 +77,15 @@ Inside `/data`:
 └── indexes/{version}/
 ```
 
-First index run downloads **OpenMuQ/MuQ-MuLan-large** into `/data/huggingface`. Subsequent restarts reuse the cache.
+On first start (`preload_on_serve: true` by default), the server downloads **CLaMP3** weights into `/data/models/clamp3/` and MERT/XLM-R checkpoints into `/data/huggingface`. Subsequent restarts reuse the cache. No model weights are baked into the image.
+
+The model stays loaded for **5 minutes** after the last search/index (`keep_alive: 5`). If searches feel slow because weights reload every time, check `/data/config.yaml` — an older `keep_alive: immediate` overrides the default. Set `keep_alive: 5` or `forever` there.
 
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `HARMONY_DATA_PATH` | `./harmony-data` | Host path mounted at `/data` (DB, indexes, HF cache) |
 | `MUSIC_PATH` | `./music` | Host path mounted at `/music` |
 | `PORT` | `8000` | Host port mapped to the API |
 | `HARMONY_IMAGE` | `ghcr.io/.../harmony-engine:latest` | Override image (e.g. pinned version) |
@@ -128,7 +139,7 @@ docker image ls harmony-engine:cuda-local
 
 ## Image size
 
-Images bundle PyTorch and the MuQ-MuLan Python stack, but **not** the model weights (those download to `/data/huggingface` on first index).
+Images bundle PyTorch and the CLaMP3 Python stack, but **not** model weights — those download on first server startup (or first index) into `$HARMONY_DATA_PATH` on the host.
 
 | Image | Typical compressed pull | Notes |
 |-------|-------------------------|-------|

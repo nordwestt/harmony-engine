@@ -35,13 +35,13 @@ class DatabaseConfig:
 
 @dataclass
 class EmbeddingConfig:
-    model: str = "muq-mulan"
-    checkpoint: str = "OpenMuQ/MuQ-MuLan-large"
+    model: str = "clamp3"
+    checkpoint: str = "sander-wood/clamp3"
     device: str = "auto"
     batch_size: int = 16
     dimension: int | None = None
-    # Keep model in RAM: false/0/"immediate", minutes (e.g. 30), or "forever"
-    keep_alive: str | int | bool = "forever"
+    # Keep model in RAM: false/0/"immediate", minutes (e.g. 5), or "forever"
+    keep_alive: str | int | bool = 5
     preload_on_serve: bool = True
 
     def effective_dimension(self) -> int:

@@ -7,7 +7,7 @@ services:
     ports:
       - "${PORT:-8000}:8000"
     volumes:
-      - harmony-data:/data
+      - ${HARMONY_DATA_PATH:-./harmony-data}:/data
       - ${MUSIC_PATH:-./music}:/music:ro
     environment:
       HARMONY_DATA_DIR: /data
@@ -20,7 +20,4 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
-
-volumes:
-  harmony-data:
+      start_period: 120s

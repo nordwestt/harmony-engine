@@ -10,7 +10,7 @@ def test_config_defaults(tmp_path: Path) -> None:
     cfg = Config(data_dir=tmp_path)
     assert cfg.database.path == "harmony.db"
     assert cfg.audio.target_sample_rate == 24000
-    assert "muq-mulan" in cfg.embedding_version()
+    assert "clamp3" in cfg.embedding_version()
 
 
 def test_config_roundtrip(tmp_path: Path) -> None:
@@ -20,7 +20,7 @@ def test_config_roundtrip(tmp_path: Path) -> None:
 
     loaded = Config.load(tmp_path)
     assert loaded.filesystem.paths == ["/music"]
-    assert loaded.audio.chunk_seconds == 10
+    assert loaded.audio.chunk_seconds == cfg.audio.chunk_seconds
 
 
 def test_index_paths_from_env(tmp_path: Path, monkeypatch) -> None:

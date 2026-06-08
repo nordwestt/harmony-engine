@@ -18,12 +18,13 @@ ENV UV_COMPILE_BYTECODE=1
 ENV UV_LINK_MODE=copy
 ENV PATH="/app/.venv/bin:$PATH"
 
-# Install CPU torch first so muq's transitive torch dep does not pull PyPI's CUDA wheel.
+# Install CPU torch first so transitive torch deps do not pull PyPI's CUDA wheel.
 # Reinstall after sync to ensure torchaudio matches (libcudart errors = CUDA build).
+# Model weights are NOT downloaded at build time — they fetch on first serve startup.
 RUN uv venv \
     && uv pip install torch torchaudio torchvision \
         --index-url https://download.pytorch.org/whl/cpu \
-    && uv sync --extra db --extra embed --extra embed-muq --extra api-minimal --no-dev \
+    && uv sync --extra db --extra embed --extra embed-clamp3 --extra api-minimal --no-dev \
         --no-install-package torch --no-install-package torchaudio --no-install-package torchvision \
     && uv pip install --reinstall \
         torch torchaudio torchvision \
@@ -31,10 +32,9 @@ RUN uv venv \
     && rm -rf /app/.venv/lib/python3.12/site-packages/nvidia \
     && /app/.venv/bin/python -c "\
 import torch, torchaudio, torchvision; \
-import torchvision.transforms; \
-from harmony.config import Config; \
-from harmony.embedding.factory import create_embedder; \
-create_embedder(Config()); \
+from harmony.embedding.factory import backend_dimension, list_backends; \
+assert 'clamp3' in list_backends(); \
+assert backend_dimension('clamp3') == 768; \
 assert not torch.backends.cuda.is_built(); \
 print('pytorch', torch.__version__, 'torchvision', torchvision.__version__)" \
     && find /app/.venv -type d -name __pycache__ -exec rm -rf {} + \
@@ -61,7 +61,7 @@ ENV HF_HOME=/data/huggingface
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

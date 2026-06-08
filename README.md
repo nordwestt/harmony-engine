@@ -1,6 +1,6 @@
 # Harmony Engine
 
-Self-hosted music library indexer and vector search engine with pluggable embedding backends. The default embedder is [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large); select others via `embedding.model` in config.
+Self-hosted music library indexer and vector search engine with pluggable embedding backends. The default embedder is [CLaMP3](https://github.com/sanderwood/clamp3) SAAS; [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large) is available via `embedding.model: muq-mulan`.
 
 Harmony turns a local music collection into searchable embeddings and exposes retrieval primitives (text → tracks, track → similar tracks, etc.) that higher-level apps — playlist generators, DJ tools, recommendation UIs — build on.
 
@@ -11,7 +11,7 @@ Harmony turns a local music collection into searchable embeddings and exposes re
 **Phase 0** — working today:
 
 - Filesystem scan + content-hash identity + library sync
-- Audio load, resample (24 kHz), chunk, embed (default: MuQ-MuLan)
+- Audio load, resample (24 kHz), chunk, embed (default: CLaMP3)
 - Track vectors persisted to disk + brute-force cosine search
 - `harmony search text "dreamy night drive"`
 
@@ -27,6 +27,7 @@ Published images: `ghcr.io/harmony-search/harmony-engine` — tags `latest` (CPU
 git clone https://github.com/harmony-search/harmony-engine.git
 cd harmony-engine
 
+export HARMONY_DATA_PATH=~/.harmony # host path for DB, indexes, model cache
 export MUSIC_PATH=~/music          # host path mounted read-only at /music
 docker compose up -d
 
@@ -55,7 +56,7 @@ See [docs/docker.md](docs/docker.md) for volumes, env vars, upgrades, and troubl
 Uses [uv](https://docs.astral.sh/uv/). Run the server first; the CLI auto-detects it and indexes/search without restart.
 
 ```bash
-uv sync --extra db --extra embed --extra embed-muq --extra api --group dev
+uv sync --extra db --extra embed --extra embed-clamp3 --extra api --group dev
 
 # terminal 1 — the engine
 uv run harmony serve
@@ -89,7 +90,7 @@ Default: `~/.harmony` (or `/data` in Docker)
 └── indexes/{version}/track.brute.{npy,json}
 ```
 
-First embed run downloads **OpenMuQ/MuQ-MuLan-large** from Hugging Face (~700M params). GPU recommended; CPU works but is slower.
+First embed run downloads **CLaMP3** weights (plus MERT and XLM-RoBERTa) into `~/.harmony/models/clamp3/` and `/data/huggingface` (Docker). GPU recommended; CPU works but is slower. Use `embedding.model: muq-mulan` for the MuQ backend.
 
 ## Project layout
 
@@ -106,4 +107,4 @@ harmony/
 
 ## License
 
-MIT (engine). MuQ-MuLan weights are [CC-BY-NC 4.0](https://huggingface.co/OpenMuQ/MuQ-MuLan-large).
+MIT (engine). CLaMP3 upstream code is MIT ([sanderwood/clamp3](https://github.com/sanderwood/clamp3)). MuQ-MuLan weights are [CC-BY-NC 4.0](https://huggingface.co/OpenMuQ/MuQ-MuLan-large) when that backend is used.

@@ -1,6 +1,6 @@
 # Model keep-alive
 
-The default embedding model (MuQ-MuLan) is ~5 GB of weights. Loading it takes tens of seconds. Harmony lets you control how long the embedding model stays in memory **within a running process**.
+The default embedding model (CLaMP3 SAAS + MERT + XLM-R) is several GB of weights. Loading it takes tens of seconds. Harmony lets you control how long the embedding model stays in memory **within a running process**.
 
 ## Why each CLI search feels slow
 
@@ -13,7 +13,7 @@ For interactive searching, use **`harmony serve`** and point the CLI at the API.
 Terminal 1 — start the server (loads model once):
 
 ```bash
-uv sync --extra api --extra embed --extra embed-muq
+uv sync --extra api --extra embed --extra embed-clamp3
 uv run harmony serve
 ```
 
@@ -37,7 +37,7 @@ In `~/.harmony/config.yaml`:
 
 ```yaml
 embedding:
-  keep_alive: forever      # see options below
+  keep_alive: 5            # see options below (default: 5 minutes)
   preload_on_serve: true   # warm-load model when harmony serve starts
 ```
 
@@ -49,7 +49,7 @@ embedding:
 | `30`, `30m`, `30min` | Keep loaded; unload after 30 minutes **since last use** |
 | `forever`, `always`, `true` | Keep loaded until the process exits |
 
-Default: **`forever`** (ideal for `harmony serve`).
+Default: **`5`** minutes since last use (good balance for Docker and interactive search). Use **`forever`** on a dedicated search server if you prefer never unloading.
 
 ### `preload_on_serve`
 

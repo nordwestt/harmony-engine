@@ -264,7 +264,7 @@ def bench() -> None:
 @click.option(
     "--model",
     default=None,
-    help="Embedding backend (e.g. muq-mulan, clap-music); overrides config",
+    help="Embedding backend (e.g. muq-mulan, clamp3); overrides config",
 )
 @click.option(
     "--checkpoint",
@@ -430,15 +430,16 @@ def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
     except ImportError:
         click.echo(
             "API server requires optional dependencies. "
-            "Install with: uv sync --extra api --extra embed --extra embed-muq",
+            "Install with: uv sync --extra api --extra embed --extra embed-clamp3",
             err=True,
         )
         sys.exit(1)
 
-    engine = Engine(ctx.obj["data_dir"])
-    policy = engine.model_status()["keep_alive"]
-    engine.close()
+    from harmony.config import Config
+    from harmony.embedding.keep_alive import parse_keep_alive
 
+    config = Config.load(ctx.obj["data_dir"])
+    policy = parse_keep_alive(config.embedding.keep_alive).label
     click.echo(f"Model keep-alive: {policy}", err=True)
     click.echo(
         f"API listening on http://{host}:{port}  "
