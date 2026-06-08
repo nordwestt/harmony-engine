@@ -49,6 +49,8 @@ def test_create_embedder_returns_clamp3_by_default() -> None:
     assert isinstance(embedder, Clamp3Embedder)
     assert embedder.dimension == 768
     assert cfg.embedding.dimension == 768
+    assert embedder.keep_alive_policy.mode == "timed"
+    assert embedder.keep_alive_policy.minutes == 5
 
 
 def test_create_embedder_returns_muq_backend() -> None:

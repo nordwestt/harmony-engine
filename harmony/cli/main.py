@@ -435,10 +435,11 @@ def serve(ctx: click.Context, host: str, port: int, no_preload: bool) -> None:
         )
         sys.exit(1)
 
-    engine = Engine(ctx.obj["data_dir"])
-    policy = engine.model_status()["keep_alive"]
-    engine.close()
+    from harmony.config import Config
+    from harmony.embedding.keep_alive import parse_keep_alive
 
+    config = Config.load(ctx.obj["data_dir"])
+    policy = parse_keep_alive(config.embedding.keep_alive).label
     click.echo(f"Model keep-alive: {policy}", err=True)
     click.echo(
         f"API listening on http://{host}:{port}  "

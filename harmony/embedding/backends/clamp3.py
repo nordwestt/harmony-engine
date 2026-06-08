@@ -35,7 +35,7 @@ DEFAULT_CHECKPOINT = "sander-wood/clamp3"
 class _Clamp3Runtime:
     model: Any
     tokenizer: Any
-    mert: Any
+    mert: Any | None = None
 
 
 class Clamp3Embedder:
@@ -132,7 +132,7 @@ class Clamp3Embedder:
 
     def preload(self) -> None:
         """Load model weights into memory."""
-        self._ensure_runtime()
+        self._ensure_core()
 
     def preload_background(self) -> None:
         """Start loading model weights in a background thread."""
@@ -144,7 +144,7 @@ class Clamp3Embedder:
 
         def _run() -> None:
             try:
-                self._ensure_runtime()
+                self._ensure_core()
             except Exception as e:
                 with self._lock:
                     self._load_error = str(e)
@@ -181,11 +181,15 @@ class Clamp3Embedder:
             if self._session_depth == 0:
                 self._after_use()
 
-    def _ensure_runtime(self) -> _Clamp3Runtime:
+    def _cancel_unload_timer(self) -> None:
+        if self._unload_timer is not None:
+            self._unload_timer.cancel()
+            self._unload_timer = None
+
+    def _ensure_core(self) -> _Clamp3Runtime:
+        """Load CLaMP3 + tokenizer (text and audio encoder). MERT is lazy."""
         with self._lock:
-            if self._unload_timer is not None:
-                self._unload_timer.cancel()
-                self._unload_timer = None
+            self._cancel_unload_timer()
 
             if self._runtime is not None:
                 return self._runtime
@@ -193,7 +197,6 @@ class Clamp3Embedder:
             try:
                 from transformers import AutoTokenizer
 
-                from harmony.embedding.backends.clamp3_lib.mert import MertExtractor
                 from harmony.embedding.backends.clamp3_lib.model import (
                     build_clamp3_model,
                     load_clamp3_checkpoint,
@@ -218,11 +221,23 @@ class Clamp3Embedder:
             model = model.to(self.device).eval()
 
             tokenizer = AutoTokenizer.from_pretrained(TEXT_MODEL_NAME)
-            mert = MertExtractor(checkpoint=self._mert_checkpoint(), device=self.device)
             print("CLaMP3 ready.", file=sys.stderr)
 
-            self._runtime = _Clamp3Runtime(model=model, tokenizer=tokenizer, mert=mert)
+            self._runtime = _Clamp3Runtime(model=model, tokenizer=tokenizer, mert=None)
             return self._runtime
+
+    def _ensure_mert(self) -> Any:
+        """Load MERT feature extractor on first audio embed (not needed for text search)."""
+        runtime = self._ensure_core()
+        with self._lock:
+            if runtime.mert is not None:
+                return runtime.mert
+
+            from harmony.embedding.backends.clamp3_lib.mert import MertExtractor
+
+            print(f"Loading MERT ({self._mert_checkpoint()}) on {self.device}…", file=sys.stderr)
+            runtime.mert = MertExtractor(checkpoint=self._mert_checkpoint(), device=self.device)
+            return runtime.mert
 
     def _after_use(self) -> None:
         if self._session_depth > 0:
@@ -234,6 +249,8 @@ class Clamp3Embedder:
         elif policy.mode == "timed":
             assert policy.minutes is not None
             self._schedule_unload(policy.minutes)
+        else:
+            self._cancel_unload_timer()
 
     def _schedule_unload(self, minutes: int) -> None:
         with self._lock:
@@ -266,7 +283,8 @@ class Clamp3Embedder:
                 from harmony.audio.resample import resample
                 from harmony.embedding.backends.clamp3_lib.inference import embed_audio_features
 
-                runtime = self._ensure_runtime()
+                runtime = self._ensure_core()
+                mert = self._ensure_mert()
                 import torch
 
                 target_sr = MERT_SAMPLE_RATE
@@ -276,7 +294,7 @@ class Clamp3Embedder:
                     if sample_rate != target_sr:
                         wav = resample(wav, sample_rate, target_sr)
                     tensor = torch.tensor(wav, device=self.device).unsqueeze(0)
-                    mert_features = runtime.mert.extract(tensor)
+                    mert_features = mert.extract(tensor)
                     with torch.no_grad():
                         embedding = embed_audio_features(
                             runtime.model,
@@ -301,7 +319,7 @@ class Clamp3Embedder:
             try:
                 from harmony.embedding.backends.clamp3_lib.inference import embed_text
 
-                runtime = self._ensure_runtime()
+                runtime = self._ensure_core()
                 import torch
 
                 max_len = self._config.retrieval.max_query_length

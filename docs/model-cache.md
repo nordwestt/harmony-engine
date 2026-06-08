@@ -37,7 +37,7 @@ In `~/.harmony/config.yaml`:
 
 ```yaml
 embedding:
-  keep_alive: forever      # see options below
+  keep_alive: 5            # see options below (default: 5 minutes)
   preload_on_serve: true   # warm-load model when harmony serve starts
 ```
 
@@ -49,7 +49,7 @@ embedding:
 | `30`, `30m`, `30min` | Keep loaded; unload after 30 minutes **since last use** |
 | `forever`, `always`, `true` | Keep loaded until the process exits |
 
-Default: **`forever`** (ideal for `harmony serve`).
+Default: **`5`** minutes since last use (good balance for Docker and interactive search). Use **`forever`** on a dedicated search server if you prefer never unloading.
 
 ### `preload_on_serve`
 

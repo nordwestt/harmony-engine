@@ -831,7 +831,7 @@ embedding:
   model: clamp3
   device: auto          # cuda | cpu | auto
   batch_size: 16
-  keep_alive: forever   # immediate | minutes (30) | forever
+  keep_alive: 5          # immediate | minutes (5) | forever
   preload_on_serve: true
 
 audio:

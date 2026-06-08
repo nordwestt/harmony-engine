@@ -27,6 +27,7 @@ Published images: `ghcr.io/harmony-search/harmony-engine` — tags `latest` (CPU
 git clone https://github.com/harmony-search/harmony-engine.git
 cd harmony-engine
 
+export HARMONY_DATA_PATH=~/.harmony # host path for DB, indexes, model cache
 export MUSIC_PATH=~/music          # host path mounted read-only at /music
 docker compose up -d
 
