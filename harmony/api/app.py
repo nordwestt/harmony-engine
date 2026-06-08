@@ -19,6 +19,7 @@ from harmony.api.schemas import (
     InitResponse,
     PurgeRequest,
     ReadyResponse,
+    SearchFilters,
     SearchResponse,
     SyncReportResponse,
     TextSearchRequest,
@@ -38,6 +39,7 @@ from harmony.errors import (
 )
 from harmony.jobs.runner import IndexJobRunner
 from harmony.models import SyncReport, TrackStatus
+from harmony.retrieval.filters import Filters
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +66,30 @@ def _harmony_error_response(exc: HarmonyError) -> JSONResponse:
         status_code=exc.http_status,
         content=ErrorResponse(error=exc.message, code=exc.code).model_dump(),
     )
+
+
+def _to_filters(filters: SearchFilters | None) -> Filters | None:
+    if filters is None:
+        return None
+    artists = filters.artists
+    albums = filters.albums
+    if not artists and not albums:
+        return None
+    return Filters(artists=artists, albums=albums)
+
+
+def _search_query(
+    *,
+    query_type: str,
+    value: str,
+    filters: SearchFilters | None,
+) -> dict[str, Any]:
+    query: dict[str, Any] = {"type": query_type, "value": value}
+    if filters is not None:
+        dumped = filters.model_dump(exclude_none=True)
+        if dumped:
+            query["filters"] = dumped
+    return query
 
 
 def _search_result_to_response(result: Any, query: dict[str, Any]) -> dict[str, Any]:
@@ -374,19 +400,27 @@ def create_app(
     @app.post("/v1/search/text", response_model=SearchResponse)
     def search_text(req: TextSearchRequest) -> dict[str, Any]:
         try:
-            result = engine.search_by_text(req.query, k=req.k)
+            result = engine.search_by_text(
+                req.query,
+                k=req.k,
+                filters=_to_filters(req.filters),
+            )
         except NotImplementedError as e:
             raise HTTPException(status_code=501, detail=str(e)) from e
 
         return _search_result_to_response(
             result,
-            {"type": "text", "value": req.query},
+            _search_query(query_type="text", value=req.query, filters=req.filters),
         )
 
     @app.post("/v1/search/track", response_model=SearchResponse)
     def search_track(req: TrackSearchRequest) -> dict[str, Any]:
         try:
-            result = engine.search_by_track(req.track_id, k=req.k)
+            result = engine.search_by_track(
+                req.track_id,
+                k=req.k,
+                filters=_to_filters(req.filters),
+            )
         except ValueError as e:
             raise HTTPException(status_code=404, detail=str(e)) from e
         except NotImplementedError as e:
@@ -394,7 +428,7 @@ def create_app(
 
         return _search_result_to_response(
             result,
-            {"type": "track", "value": req.track_id},
+            _search_query(query_type="track", value=req.track_id, filters=req.filters),
         )
 
     return app

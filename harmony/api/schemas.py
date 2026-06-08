@@ -15,6 +15,20 @@ TRACK_ID_PATTERN = re.compile(
 MAX_QUERY_LENGTH = 512
 MAX_INDEX_PATHS = 32
 MAX_PATH_STRING_LENGTH = 4096
+MAX_FILTER_LIST = 32
+
+
+class SearchFilters(BaseModel):
+    artists: list[str] | None = Field(default=None, max_length=MAX_FILTER_LIST)
+    albums: list[str] | None = Field(default=None, max_length=MAX_FILTER_LIST)
+
+    @field_validator("artists", "albums")
+    @classmethod
+    def normalize_filter_lists(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        cleaned = [v.strip() for v in values if v.strip()]
+        return cleaned or None
 
 
 class ErrorResponse(BaseModel):
@@ -82,6 +96,7 @@ class SyncReportResponse(BaseModel):
 class TextSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=MAX_QUERY_LENGTH)
     k: int = Field(default=50, ge=1, le=500)
+    filters: SearchFilters | None = None
 
     @field_validator("query")
     @classmethod
@@ -95,6 +110,7 @@ class TextSearchRequest(BaseModel):
 class TrackSearchRequest(BaseModel):
     track_id: str
     k: int = Field(default=50, ge=1, le=500)
+    filters: SearchFilters | None = None
 
     @field_validator("track_id")
     @classmethod

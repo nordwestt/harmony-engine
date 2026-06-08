@@ -51,8 +51,8 @@ Base path: `/v1`. Interactive docs: `http://127.0.0.1:8000/docs`
 | `POST /v1/index` | Scan, embed, update index |
 | `GET /v1/index/jobs/{job_id}` | Background index job status |
 | `POST /v1/index/jobs/{job_id}/resume` | Resume an interrupted embed job |
-| `POST /v1/search/text` | Text → similar tracks |
-| `POST /v1/search/track` | Track → similar tracks |
+| `POST /v1/search/text` | Text → similar tracks (optional `filters`) |
+| `POST /v1/search/track` | Track → similar tracks (optional `filters`) |
 | `GET /v1/library/stats` | Library statistics |
 | `GET /v1/library/tracks` | Paginated track list |
 | `GET /v1/library/tracks/{id}` | Single track + paths |
@@ -81,6 +81,42 @@ Common error codes:
 | `GET /v1/ready` | **Readiness** — model loaded and index has vectors (required for search) |
 
 Search endpoints return `503` with `index_not_ready` or `model_not_ready` when the engine is not ready to serve queries. Poll `/v1/ready` before searching on a fresh install.
+
+## Search filters
+
+Both `POST /v1/search/text` and `POST /v1/search/track` accept an optional `filters` object to restrict results by metadata:
+
+```json
+{
+  "query": "melancholic piano",
+  "k": 10,
+  "filters": {
+    "artists": ["Radiohead", "Michael Jackson"],
+    "albums": ["OK Computer", "Thriller"]
+  }
+}
+```
+
+Track search uses the same shape — replace `query` with `track_id`.
+
+**Match rules:**
+
+- **Within a list:** OR — a track matches if its `artist` equals any listed artist (same for `album`).
+- **Across fields:** AND — if both `artists` and `albums` are set, the track must satisfy both.
+- **Comparison:** case-insensitive exact match on stored tag metadata (whitespace trimmed).
+- **Omitted or empty lists:** no constraint on that field.
+
+Applied filters are echoed in the response under `query.filters`.
+
+**Scores** are cosine similarity (higher = more similar). When filters are active, the engine fetches a larger candidate pool from the index before applying metadata filters, so restrictive filters can still fill `k` results when enough matching tracks exist. If the library has very few tracks matching the filter, you may get fewer than `k` results.
+
+Example — similar tracks, Radiohead only:
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/search/text \
+  -H 'Content-Type: application/json' \
+  -d '{"query": "dreamy ambient", "k": 20, "filters": {"artists": ["Radiohead"]}}'
+```
 
 ## Security (trusted network)
 

@@ -50,7 +50,8 @@ class SearchEngine:
             )
 
         vector = self.embedder.embed_text(query)
-        ids, scores = track_index.search(vector, k=k * 2)
+        candidate_k = _candidate_k(k, filters, track_index.size)
+        ids, scores = track_index.search(vector, k=candidate_k)
 
         items = self._build_results(ids, scores, k=k, filters=filters)
         embedded = self.store.count_embedded_tracks()
@@ -81,7 +82,8 @@ class SearchEngine:
         if vector is None:
             raise ValueError(f"No embedding stored for track {track_id}")
 
-        ids, scores = track_index.search(vector, k=k + 1)
+        candidate_k = _candidate_k(k, filters, track_index.size)
+        ids, scores = track_index.search(vector, k=candidate_k)
         items = self._build_results(
             ids,
             scores,
@@ -117,6 +119,8 @@ class SearchEngine:
             track = self.store.get_track(track_id)
             if track is None or track.status.value == "removed":
                 continue
+            if filters and not filters.matches(track):
+                continue
             items.append(
                 ScoredItem(
                     track_id=track_id,
@@ -129,3 +133,11 @@ class SearchEngine:
             if len(items) >= k:
                 break
         return items
+
+
+def _candidate_k(k: int, filters: Filters | None, index_size: int) -> int:
+    """How many ANN candidates to fetch before metadata post-filtering."""
+    base = k * 2
+    if filters and filters.has_metadata_filters():
+        base = max(base, k * 20)
+    return min(index_size, base)

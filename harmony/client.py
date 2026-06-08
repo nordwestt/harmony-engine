@@ -162,21 +162,39 @@ def wait_for_index_job(
         time.sleep(poll_interval)
 
 
-def search_text(api_url: str, query: str, *, k: int = 50) -> dict[str, Any]:
+def search_text(
+    api_url: str,
+    query: str,
+    *,
+    k: int = 50,
+    filters: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"query": query, "k": k}
+    if filters:
+        body["filters"] = filters
     return _request(
         api_url,
         "POST",
         "/v1/search/text",
-        body={"query": query, "k": k},
+        body=body,
     )
 
 
-def search_track(api_url: str, track_id: str, *, k: int = 50) -> dict[str, Any]:
+def search_track(
+    api_url: str,
+    track_id: str,
+    *,
+    k: int = 50,
+    filters: dict[str, list[str]] | None = None,
+) -> dict[str, Any]:
+    body: dict[str, Any] = {"track_id": track_id, "k": k}
+    if filters:
+        body["filters"] = filters
     return _request(
         api_url,
         "POST",
         "/v1/search/track",
-        body={"track_id": track_id, "k": k},
+        body=body,
     )
 
 

@@ -216,3 +216,87 @@ def test_unhandled_exception_returns_internal_error(tmp_path: Path, monkeypatch)
     body = resp.json()
     assert body["code"] == "internal_error"
     assert "sensitive" not in body["error"]
+
+
+def test_search_text_with_artist_filters(tmp_path: Path) -> None:
+    pytest.importorskip("fastapi")
+    import numpy as np
+
+    from harmony.config import Config
+    from harmony.engine import Engine
+    from harmony.models import track_id_from_content_hash, utcnow
+    from harmony.storage.metadata import MetadataStore
+    from harmony.storage.vectors import VectorStore
+    from tests.fake_embedder import FakeEmbedder
+
+    track_a = track_id_from_content_hash("api-hash-a")
+    track_b = track_id_from_content_hash("api-hash-b")
+    track_c = track_id_from_content_hash("api-hash-c")
+
+    cfg = Config(data_dir=tmp_path / "data")
+    store = MetadataStore(cfg)
+    vectors = VectorStore(cfg)
+    version = cfg.embedding_version()
+    now = utcnow().isoformat()
+
+    for track_id, artist, album, vector in (
+        (track_a, "Radiohead", "OK Computer", [1.0, 0.0, 0.0]),
+        (track_b, "Michael Jackson", "Thriller", [0.9, 0.1, 0.0]),
+        (track_c, "Beck", "Odelay", [0.8, 0.2, 0.0]),
+    ):
+        store.conn.execute(
+            """
+            INSERT INTO tracks (
+                track_id, content_hash, status, primary_path,
+                duration_ms, title, artist, album, embedding_version,
+                indexed_at, last_seen_at, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                track_id,
+                f"hash-{track_id}",
+                "active",
+                f"/music/{track_id}.flac",
+                1000,
+                track_id.upper(),
+                artist,
+                album,
+                version,
+                now,
+                now,
+                now,
+                now,
+            ),
+        )
+        vectors.save_track_vector(
+            track_id,
+            np.array(vector, dtype=np.float32),
+            version,
+        )
+    store.conn.commit()
+
+    engine = Engine(cfg.data_dir)
+    embedder = FakeEmbedder(dimension=3)
+    embedder.is_loaded = True
+    engine._embedder = embedder
+    engine._get_index_manager().rebuild()
+
+    client = TestClient(create_app(cfg.data_dir, preload_on_serve=False, engine=engine))
+    resp = client.post(
+        "/v1/search/text",
+        json={
+            "query": "melancholic piano",
+            "k": 10,
+            "filters": {"artists": ["Radiohead", "Michael Jackson"]},
+        },
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    artists = {item["metadata"]["artist"] for item in body["items"]}
+    assert artists == {"Radiohead", "Michael Jackson"}
+    assert body["query"]["filters"] == {
+        "artists": ["Radiohead", "Michael Jackson"],
+    }
+
+    store.close()
+    engine.close()
