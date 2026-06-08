@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from harmony.config import Config
+from harmony.embedding.backends.clamp3 import EMBEDDING_DIM as CLAMP3_EMBEDDING_DIM
 from harmony.embedding.backends.muq_mulan import EMBEDDING_DIM as MUQ_EMBEDDING_DIM
 from harmony.embedding.base import Embedder
 
 _BACKEND_DIMENSIONS: dict[str, int] = {
     "muq-mulan": MUQ_EMBEDDING_DIM,
+    "clamp3": CLAMP3_EMBEDDING_DIM,
 }
 
 
@@ -19,8 +21,15 @@ def _create_muq_mulan(config: Config) -> Embedder:
     return MuQMuLanEmbedder(config)
 
 
+def _create_clamp3(config: Config) -> Embedder:
+    from harmony.embedding.backends.clamp3 import Clamp3Embedder
+
+    return Clamp3Embedder(config)
+
+
 _REGISTRY: dict[str, Callable[[Config], Embedder]] = {
     "muq-mulan": _create_muq_mulan,
+    "clamp3": _create_clamp3,
 }
 
 

@@ -264,7 +264,7 @@ def bench() -> None:
 @click.option(
     "--model",
     default=None,
-    help="Embedding backend (e.g. muq-mulan, clap-music); overrides config",
+    help="Embedding backend (e.g. muq-mulan, clamp3); overrides config",
 )
 @click.option(
     "--checkpoint",

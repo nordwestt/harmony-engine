@@ -1,6 +1,6 @@
 # Harmony Engine
 
-Self-hosted music library indexer and vector search engine with pluggable embedding backends. The default embedder is [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large); select others via `embedding.model` in config.
+Self-hosted music library indexer and vector search engine with pluggable embedding backends. The default embedder is [MuQ-MuLan](https://huggingface.co/OpenMuQ/MuQ-MuLan-large); [CLaMP3](https://github.com/sanderwood/clamp3) is also available via `embedding.model: clamp3`.
 
 Harmony turns a local music collection into searchable embeddings and exposes retrieval primitives (text → tracks, track → similar tracks, etc.) that higher-level apps — playlist generators, DJ tools, recommendation UIs — build on.
 
